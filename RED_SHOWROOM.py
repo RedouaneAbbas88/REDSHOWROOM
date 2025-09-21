@@ -105,6 +105,9 @@ if not df_ventes.empty:
     stock_reel['Quantité_y'] = stock_reel['Quantité_y'].fillna(0)
     stock_reel['Stock restant'] = stock_reel['Quantité_x'] - stock_reel['Quantité_y']
 else:
+
+    print(stock_reel.columns)
+    print(stock_reel.head())
     stock_reel['Stock restant'] = stock_reel['Quantité_x']
 
 st.dataframe(stock_reel[['Produit', 'Stock restant']], use_container_width=True)
