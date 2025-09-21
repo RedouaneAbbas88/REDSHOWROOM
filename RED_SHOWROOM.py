@@ -33,7 +33,7 @@ spreadsheet = client.open_by_key(SPREADSHEET_ID)
 sheet_produits = spreadsheet.worksheet("Produits")
 sheet_stock = spreadsheet.worksheet("Stock")
 sheet_ventes = spreadsheet.worksheet("Ventes")
-sheet_clients = spreadsheet.worksheet("Clients")
+sheet_clients = spreadsheet.worksheet("Clients")  # nouvelle feuille Clients
 
 # ---------------------------------------------------
 # 🔹 Charger les données
@@ -41,11 +41,14 @@ sheet_clients = spreadsheet.worksheet("Clients")
 df_produits = pd.DataFrame(sheet_produits.get_all_records())
 produits_dispo = df_produits['Produit'].tolist()
 
+df_stock = pd.DataFrame(sheet_stock.get_all_records())
+df_ventes = pd.DataFrame(sheet_ventes.get_all_records())
+df_clients = pd.DataFrame(sheet_clients.get_all_records())
+
 # ---------------------------------------------------
 # 🔹 Formulaire Ajout Stock
 # ---------------------------------------------------
 st.header("🛒 Gestion du Stock")
-
 with st.form("form_stock"):
     st.subheader("Ajouter du stock")
     produit_stock = st.selectbox("Produit", produits_dispo)
@@ -62,37 +65,13 @@ with st.form("form_stock"):
 # 🔹 Formulaire Vente
 # ---------------------------------------------------
 st.header("💰 Ventes")
-
-
-def generate_facture(client_name, produit, quantite, prix_unitaire, total):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(0, 10, "Facture d'achat", ln=True, align="C")
-
-    pdf.set_font("Arial", '', 12)
-    pdf.ln(10)
-    pdf.cell(0, 10, f"Client : {client_name}", ln=True)
-    pdf.cell(0, 10, f"Produit : {produit}", ln=True)
-    pdf.cell(0, 10, f"Quantité : {quantite}", ln=True)
-    pdf.cell(0, 10, f"Prix unitaire : {prix_unitaire}", ln=True)
-    pdf.cell(0, 10, f"Total : {total}", ln=True)
-
-    pdf_file = f"facture_{client_name.replace(' ', '_')}.pdf"
-    pdf.output(pdf_file)
-    return pdf_file
-
-
 with st.form("form_vente"):
     st.subheader("Enregistrer une vente")
     produit_vente = st.selectbox("Produit vendu", produits_dispo)
     quantite_vente = st.number_input("Quantité vendue", min_value=1, step=1)
-
-    # Infos client
     client_nom = st.text_input("Nom du client")
-    client_tel = st.text_input("Téléphone")
-    client_email = st.text_input("Email")
-    client_adresse = st.text_area("Adresse")
+    client_email = st.text_input("Email du client")
+    client_tel = st.text_input("Téléphone du client")
 
     prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0])
     total_vente = prix_unitaire * quantite_vente
@@ -101,37 +80,62 @@ with st.form("form_vente"):
     submit_vente = st.form_submit_button("Enregistrer la vente")
 
     if submit_vente:
-        # Enregistrer le client
-        client_row = [str(datetime.now()), client_nom, client_tel, client_email, client_adresse]
-        sheet_clients.append_row(client_row)
-
-        # Vérifier le stock
+        # Vérifier stock disponible
         df_stock = pd.DataFrame(sheet_stock.get_all_records())
-        df_ventes = pd.DataFrame(sheet_ventes.get_all_records()) if 'df_ventes' in locals() else pd.DataFrame()
-
+        df_ventes = pd.DataFrame(sheet_ventes.get_all_records())
         stock_dispo = df_stock[df_stock['Produit'] == produit_vente]['Quantité'].sum() - \
-                      df_ventes[df_ventes['Produit'] == produit_vente]['Quantité'].sum() if not df_ventes.empty else \
-            df_stock[df_stock['Produit'] == produit_vente]['Quantité'].sum()
+                      df_ventes[df_ventes['Produit'] == produit_vente]['Quantité'].sum() if not df_ventes.empty else df_stock[df_stock['Produit'] == produit_vente]['Quantité'].sum()
 
         if quantite_vente > stock_dispo:
             st.error(f"Stock insuffisant ! Stock disponible : {stock_dispo}")
         else:
-            vente_row = [str(datetime.now()), client_nom, produit_vente, quantite_vente, prix_unitaire, total_vente]
-            sheet_ventes.append_row(vente_row)
+            # Ajouter la vente
+            row_vente = [str(datetime.now()), client_nom, produit_vente, quantite_vente, prix_unitaire, total_vente]
+            sheet_ventes.append_row(row_vente)
+
+            # Ajouter le client si pas existant
+            if client_nom not in df_clients['Nom'].values:
+                sheet_clients.append_row([client_nom, client_email, client_tel])
+
             st.success(f"Vente enregistrée pour {client_nom} : {quantite_vente} {produit_vente} ({total_vente})")
 
-            # Générer facture
-            facture = generate_facture(client_nom, produit_vente, quantite_vente, prix_unitaire, total_vente)
-            st.download_button("Télécharger la facture", facture)
+            # ---------------------------------------------------
+            # 🔹 Génération Facture PDF
+            # ---------------------------------------------------
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", "B", 16)
+            pdf.cell(0, 10, "FACTURE", ln=True, align="C")
+            pdf.ln(10)
+            pdf.set_font("Arial", "", 12)
+            pdf.cell(0, 10, f"Client: {client_nom}", ln=True)
+            pdf.cell(0, 10, f"Email: {client_email}", ln=True)
+            pdf.cell(0, 10, f"Téléphone: {client_tel}", ln=True)
+            pdf.ln(10)
+            pdf.cell(0, 10, f"Produit: {produit_vente}", ln=True)
+            pdf.cell(0, 10, f"Quantité: {quantite_vente}", ln=True)
+            pdf.cell(0, 10, f"Prix unitaire: {prix_unitaire}", ln=True)
+            pdf.cell(0, 10, f"Total: {total_vente}", ln=True)
+
+            facture_pdf = pdf.output(dest='S').encode('latin1')
+
+# ---------------------------------------------------
+# 🔹 Bouton Télécharger Facture (hors formulaire)
+# ---------------------------------------------------
+if 'facture_pdf' in locals():
+    st.download_button(
+        label="Télécharger la facture",
+        data=facture_pdf,
+        file_name=f"facture_{client_nom}.pdf",
+        mime="application/pdf"
+    )
 
 # ---------------------------------------------------
 # 🔹 État du stock
 # ---------------------------------------------------
 st.header("📦 État du Stock")
-
 df_stock = pd.DataFrame(sheet_stock.get_all_records())
 df_ventes = pd.DataFrame(sheet_ventes.get_all_records())
-
 stock_reel = df_stock.groupby("Produit")['Quantité'].sum().reset_index()
 
 if not df_ventes.empty:
@@ -148,6 +152,7 @@ st.dataframe(stock_reel[['Produit', 'Stock restant']], use_container_width=True)
 # 🔹 Historique des ventes
 # ---------------------------------------------------
 st.header("📄 Historique des Ventes")
+df_ventes = pd.DataFrame(sheet_ventes.get_all_records())
 if not df_ventes.empty:
     st.dataframe(df_ventes, use_container_width=True)
 else:
