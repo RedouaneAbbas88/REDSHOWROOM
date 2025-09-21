@@ -24,13 +24,13 @@ creds_dict = st.secrets["google"]
 creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 client = gspread.authorize(creds)
 
-SPREADSHEET_ID = "1r4xnyKDaY6jzYGLUORKHlPeGKMCCLkkIx_XvSkIobhc"  # Remplacer par ton ID
+SPREADSHEET_ID = "1r4xnyKDaY6jzYGLUORKHlPeGKMCCLkkIx_XvSkIobhc"
 spreadsheet = client.open_by_key(SPREADSHEET_ID)
 
 # Feuilles
-sheet_produits = spreadsheet.worksheet("Produits")  # Produits et prix
-sheet_stock = spreadsheet.worksheet("Stock")  # Entrées et sorties stock
-sheet_ventes = spreadsheet.worksheet("Ventes")  # Historique ventes
+sheet_produits = spreadsheet.worksheet("Produits")
+sheet_stock = spreadsheet.worksheet("Stock")
+sheet_ventes = spreadsheet.worksheet("Ventes")
 
 # ---------------------------------------------------
 # 🔹 Charger les données
@@ -42,7 +42,6 @@ produits_dispo = df_produits['Produit'].tolist()
 # 🔹 Formulaire Ajout Stock
 # ---------------------------------------------------
 st.header("🛒 Gestion du Stock")
-
 with st.form("form_stock"):
     st.subheader("Ajouter du stock")
     produit_stock = st.selectbox("Produit", produits_dispo)
@@ -51,7 +50,6 @@ with st.form("form_stock"):
     submit_stock = st.form_submit_button("Ajouter au stock")
 
     if submit_stock:
-        # Ajouter au stock
         row = [str(datetime.now()), produit_stock, quantite_stock, prix_achat]
         sheet_stock.append_row(row)
         st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
@@ -60,14 +58,13 @@ with st.form("form_stock"):
 # 🔹 Formulaire Vente
 # ---------------------------------------------------
 st.header("💰 Ventes")
-
 with st.form("form_vente"):
     st.subheader("Enregistrer une vente")
     produit_vente = st.selectbox("Produit vendu", produits_dispo)
     quantite_vente = st.number_input("Quantité vendue", min_value=1, step=1)
     client_nom = st.text_input("Nom du client")
 
-    # Récupérer le prix unitaire depuis Produits
+    # Récupérer le prix unitaire
     prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0])
     total_vente = prix_unitaire * quantite_vente
     st.write(f"Prix unitaire : {prix_unitaire} | Total : {total_vente}")
@@ -75,16 +72,16 @@ with st.form("form_vente"):
     submit_vente = st.form_submit_button("Enregistrer la vente")
 
     if submit_vente:
-        # Vérifier stock disponible
         df_stock = pd.DataFrame(sheet_stock.get_all_records())
+        df_ventes = pd.DataFrame(sheet_ventes.get_all_records()) if 'df_ventes' in locals() else pd.DataFrame()
+
         stock_dispo = df_stock[df_stock['Produit'] == produit_vente]['Quantité'].sum() - \
-                      df_ventes[df_ventes['Produit'] == produit_vente][
-                          'Quantité'].sum() if 'df_ventes' in locals() else 0
+                      df_ventes[df_ventes['Produit'] == produit_vente]['Quantité'].sum() if not df_ventes.empty else \
+                      df_stock[df_stock['Produit'] == produit_vente]['Quantité'].sum()
 
         if quantite_vente > stock_dispo:
             st.error(f"Stock insuffisant ! Stock disponible : {stock_dispo}")
         else:
-            # Ajouter la vente
             row = [str(datetime.now()), client_nom, produit_vente, quantite_vente, prix_unitaire, total_vente]
             sheet_ventes.append_row(row)
             st.success(f"Vente enregistrée pour {client_nom} : {quantite_vente} {produit_vente} ({total_vente})")
@@ -93,22 +90,24 @@ with st.form("form_vente"):
 # 🔹 État du stock
 # ---------------------------------------------------
 st.header("📦 État du Stock")
-
 df_stock = pd.DataFrame(sheet_stock.get_all_records())
 df_ventes = pd.DataFrame(sheet_ventes.get_all_records())
 
-# Calculer stock réel
+# Calcul stock réel
 stock_reel = df_stock.groupby("Produit")['Quantité'].sum().reset_index()
+
 if not df_ventes.empty:
     ventes_group = df_ventes.groupby("Produit")['Quantité'].sum().reset_index()
-    stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left")
-    stock_reel['Quantité_y'] = stock_reel['Quantité_y'].fillna(0)
-    stock_reel['Stock restant'] = stock_reel['Quantité_x'] - stock_reel['Quantité_y']
+    stock_reel = stock_reel.merge(
+        ventes_group,
+        on="Produit",
+        how="left",
+        suffixes=("_stock", "_vente")
+    )
+    stock_reel['Quantité_vente'] = stock_reel['Quantité_vente'].fillna(0)
+    stock_reel['Stock restant'] = stock_reel['Quantité_stock'] - stock_reel['Quantité_vente']
 else:
-
-    print(stock_reel.columns)
-    print(stock_reel.head())
-    stock_reel['Stock restant'] = stock_reel['Quantité_x']
+    stock_reel['Stock restant'] = stock_reel['Quantité']
 
 st.dataframe(stock_reel[['Produit', 'Stock restant']], use_container_width=True)
 
