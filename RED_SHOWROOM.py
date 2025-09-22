@@ -6,6 +6,7 @@ from datetime import datetime
 from fpdf import FPDF
 import io
 from num2words import num2words
+import os
 
 # ---------------------------------------------------
 # ⚙️ Configuration Streamlit
@@ -35,29 +36,6 @@ def load_sheet(sheet_name):
     except Exception as e:
         st.error(f"Erreur lors du chargement de la feuille '{sheet_name}': {e}")
         return pd.DataFrame()
-
-# ---------------------------------------------------
-# 🔹 Fonction pour gérer numéros de factures
-# ---------------------------------------------------
-def get_next_invoice_number():
-    try:
-        sheet = spreadsheet.worksheet("Invoices")
-    except:
-        sheet = spreadsheet.add_worksheet(title="Invoices", rows=1000, cols=2)
-        sheet.append_row(["Numéro", "Date"])
-
-    records = sheet.get_all_records()
-    if records:
-        last_number = records[-1]["Numéro"]
-        last_num = int(last_number.split(":")[1].split("/")[0])
-    else:
-        last_num = 0
-
-    new_num = last_num + 1
-    current_year = datetime.now().year
-    invoice_number = f"Facture Num : {new_num:03d}/{current_year}"
-    sheet.append_row([invoice_number, str(datetime.now())])
-    return invoice_number
 
 # ---------------------------------------------------
 # 🔹 Données initiales
@@ -106,6 +84,9 @@ with tabs[1]:
         client_art = st.text_input("ART du client")
         client_adresse = st.text_input("Adresse du client")
 
+        # Option facture
+        generer_facture = st.checkbox("Générer une facture PDF")
+
         # Prix produit
         prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0]) if not df_produits.empty else 0.0
         total_vente = prix_unitaire * quantite_vente
@@ -149,10 +130,8 @@ with tabs[1]:
 
                 st.success(f"Vente enregistrée pour {client_nom} avec {len(st.session_state.panier)} produits.")
 
-                # 👉 Génération facture uniquement si demandé
-                if st.checkbox("Générer une facture PDF pour le client ?"):
-                    invoice_number = get_next_invoice_number()
-
+                # Génération facture si cochée
+                if generer_facture:
                     # Infos entreprise
                     entreprise_nom = "NORTH AFRICA ELECTRONICS"
                     entreprise_adresse = "123 Rue Principale, Alger"
@@ -160,11 +139,24 @@ with tabs[1]:
                     entreprise_nif = "NIF: 002316105204354"
                     entreprise_art = "ART: 002316300298344"
 
-                    # Création PDF facture
+                    # Numéro de facture
+                    annee = datetime.now().year
+                    try:
+                        sheet_factures = spreadsheet.worksheet("Factures")
+                    except:
+                        sheet_factures = spreadsheet.add_worksheet("Factures", rows=100, cols=2)
+                        sheet_factures.append_row(["Numéro", "Date"])
+
+                    factures_existantes = sheet_factures.get_all_records()
+                    numero_facture = len(factures_existantes) + 1
+                    numero_facture_str = f"{numero_facture:03d}/{annee}"
+                    sheet_factures.append_row([numero_facture_str, str(datetime.now())])
+
+                    # Création PDF
                     pdf = FPDF()
                     pdf.add_page()
                     pdf.set_font("Arial", 'B', 14)
-                    pdf.cell(200, 10, txt=invoice_number, ln=True, align="C")
+                    pdf.cell(200, 10, txt=f"FACTURE Num : {numero_facture_str}", ln=True, align="C")
                     pdf.ln(5)
 
                     pdf.set_font("Arial", size=12)
@@ -219,17 +211,23 @@ with tabs[1]:
                     pdf.set_font("Arial", 'I', 11)
                     pdf.multi_cell(0, 10, f"Arrêté la présente facture à la somme de : {montant_lettres}")
 
-                    # Export PDF
+                    # Sauvegarde locale + téléchargement
                     pdf_bytes = pdf.output(dest='S').encode('latin1')
                     pdf_io = io.BytesIO(pdf_bytes)
+
+                    os.makedirs("factures", exist_ok=True)
+                    pdf_path = os.path.join("factures", f"facture_{numero_facture_str}_{client_nom}.pdf")
+                    with open(pdf_path, "wb") as f:
+                        f.write(pdf_bytes)
 
                     st.download_button(
                         label="📥 Télécharger la facture",
                         data=pdf_io,
-                        file_name=f"facture_{client_nom}.pdf",
+                        file_name=f"facture_{numero_facture_str}_{client_nom}.pdf",
                         mime="application/pdf"
                     )
 
+                # Reset panier
                 st.session_state.panier = []
 
 # ---------------------------------------------------
