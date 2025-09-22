@@ -9,10 +9,7 @@ import io
 # ---------------------------------------------------
 # ⚙️ Configuration Streamlit
 # ---------------------------------------------------
-st.set_page_config(
-    page_title="Showroom Stock & Vente",
-    layout="wide"
-)
+st.set_page_config(page_title="Showroom Stock & Vente", layout="wide")
 st.title("📊 Gestion Showroom")
 
 # ---------------------------------------------------
@@ -29,7 +26,7 @@ SPREADSHEET_ID = "1r4xnyKDaY6jzYGLUORKHlPeGKMCCLkkIx_XvSkIobhc"
 spreadsheet = client.open_by_key(SPREADSHEET_ID)
 
 # ---------------------------------------------------
-# 🔹 Fonction pour charger une feuille en cache
+# 🔹 Fonction pour charger une feuille
 # ---------------------------------------------------
 @st.cache_data(ttl=300)
 def load_sheet(sheet_name):
@@ -42,13 +39,10 @@ def load_sheet(sheet_name):
         return pd.DataFrame()
 
 # ---------------------------------------------------
-# 🔹 Charger les données
+# 🔹 Charger les données initiales
 # ---------------------------------------------------
 df_produits = load_sheet("Produits")
-df_stock = load_sheet("Stock")
-df_ventes = load_sheet("Ventes")
 df_clients = load_sheet("Clients")
-
 produits_dispo = df_produits['Produit'].tolist() if not df_produits.empty else []
 
 # ---------------------------------------------------
@@ -66,6 +60,7 @@ with st.form("form_stock"):
         row = [str(datetime.now()), produit_stock, quantite_stock, prix_achat]
         spreadsheet.worksheet("Stock").append_row(row)
         st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
+        st.cache_data.clear()  # ✅ force reload pour mise à jour immédiate
 
 # ---------------------------------------------------
 # 🔹 Formulaire Vente
@@ -81,18 +76,22 @@ with st.form("form_vente"):
     client_email = st.text_input("Email du client")
     client_tel = st.text_input("Téléphone du client")
 
-    prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0])
+    if not df_produits.empty and produit_vente in df_produits['Produit'].values:
+        prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0])
+    else:
+        prix_unitaire = 0.0
+
     total_vente = prix_unitaire * quantite_vente
     st.write(f"Prix unitaire : {prix_unitaire} | Total : {total_vente}")
 
     submit_vente = st.form_submit_button("Enregistrer la vente")
 
     if submit_vente:
-        # Vérifier stock disponible
         df_stock = load_sheet("Stock")
         df_ventes = load_sheet("Ventes")
+        df_clients = load_sheet("Clients")
 
-        stock_dispo = df_stock[df_stock['Produit'] == produit_vente]['Quantité'].sum()
+        stock_dispo = df_stock[df_stock['Produit'] == produit_vente]['Quantité'].sum() if not df_stock.empty else 0
         ventes_sum = df_ventes[df_ventes['Produit'] == produit_vente]['Quantité'].sum() if not df_ventes.empty else 0
         stock_reel = stock_dispo - ventes_sum
 
@@ -104,12 +103,11 @@ with st.form("form_vente"):
             spreadsheet.worksheet("Ventes").append_row(row_vente)
 
             # Ajouter client si nouveau
-            df_clients = load_sheet("Clients")
             if client_nom not in df_clients['Nom'].tolist():
-                row_client = [client_nom, client_email, client_tel]
-                spreadsheet.worksheet("Clients").append_row(row_client)
+                spreadsheet.worksheet("Clients").append_row([client_nom, client_email, client_tel])
 
             st.success(f"Vente enregistrée pour {client_nom} : {quantite_vente} {produit_vente} ({total_vente})")
+            st.cache_data.clear()  # ✅ force reload
             vente_enregistree = True
 
 # ---------------------------------------------------
@@ -127,7 +125,7 @@ if vente_enregistree:
     pdf.cell(200, 10, txt=f"Prix unitaire: {prix_unitaire}", ln=True)
     pdf.cell(200, 10, txt=f"Total: {total_vente}", ln=True)
 
-    # PDF en mémoire
+    # Générer le PDF en mémoire
     pdf_bytes = pdf.output(dest='S').encode('latin1')
     pdf_io = io.BytesIO(pdf_bytes)
 
@@ -150,10 +148,9 @@ if not df_stock.empty:
 
     if not df_ventes.empty:
         ventes_group = df_ventes.groupby("Produit")['Quantité'].sum().reset_index()
-        ventes_group.rename(columns={'Quantité': 'Ventes'}, inplace=True)
         stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left")
-        stock_reel['Ventes'] = stock_reel['Ventes'].fillna(0)
-        stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Ventes']
+        stock_reel['Quantité_y'] = stock_reel['Quantité_y'].fillna(0)
+        stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_y']
     else:
         stock_reel['Stock restant'] = stock_reel['Quantité']
 
@@ -165,6 +162,7 @@ else:
 # 🔹 Historique des ventes
 # ---------------------------------------------------
 st.header("📄 Historique des Ventes")
+df_ventes = load_sheet("Ventes")
 if not df_ventes.empty:
     st.dataframe(df_ventes, use_container_width=True)
 else:
