@@ -142,21 +142,16 @@ df_ventes = load_sheet("Ventes")
 
 if not df_stock.empty:
     stock_reel = df_stock.groupby("Produit")['Quantité'].sum().reset_index()
+
     if not df_ventes.empty:
         ventes_group = df_ventes.groupby("Produit")['Quantité'].sum().reset_index()
         stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left")
         stock_reel['Quantité_y'] = stock_reel['Quantité_y'].fillna(0)
         stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_y']
     else:
+        # Pas de ventes encore -> stock restant = stock total
         stock_reel['Stock restant'] = stock_reel['Quantité']
-    st.dataframe(stock_reel[['Produit', 'Stock restant']], use_container_width=True)
 
-# ---------------------------------------------------
-# 🔹 Historique des ventes
-# ---------------------------------------------------
-st.header("📄 Historique des Ventes")
-df_ventes = load_sheet("Ventes")
-if not df_ventes.empty:
-    st.dataframe(df_ventes, use_container_width=True)
+    st.dataframe(stock_reel[['Produit', 'Stock restant']], use_container_width=True)
 else:
-    st.write("Aucune vente enregistrée.")
+    st.write("Aucun stock enregistré.")
