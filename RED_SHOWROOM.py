@@ -43,10 +43,16 @@ df_produits = load_sheet("Produits")
 produits_dispo = df_produits['Produit'].tolist() if not df_produits.empty else []
 
 # ---------------------------------------------------
+# 🔹 Mémoriser l'onglet actif
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = 0  # 0 = Ajouter Stock par défaut
 # 🔹 Onglets
 # ---------------------------------------------------
 tabs = st.tabs(["🛒 Ajouter Stock", "💰 Enregistrer Vente", "📦 État Stock", "📄 Historique Ventes"])
-
+# Afficher les onglets et garder l'index actif
+tabs = st.tabs(tab_labels)
+# Stocker temporairement l'onglet actif
+current_tab = st.session_state.active_tab
 # ---------------------------------------------------
 # Onglet 1 : Ajouter Stock
 # ---------------------------------------------------
