@@ -26,14 +26,13 @@ SCOPES = [
 creds_dict = st.secrets["google"]
 creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 client = gspread.authorize(creds)
-
 SPREADSHEET_ID = "1r4xnyKDaY6jzYGLUORKHlPeGKMCCLkkIx_XvSkIobhc"
 spreadsheet = client.open_by_key(SPREADSHEET_ID)
 
 # ---------------------------------------------------
 # 🔹 Fonction pour charger une feuille
 # ---------------------------------------------------
-@st.cache_data(ttl=10)  # Rafraîchit les données toutes les 10 secondes
+@st.cache_data(ttl=10)
 def load_sheet(sheet_name):
     try:
         sheet = spreadsheet.worksheet(sheet_name)
@@ -44,10 +43,9 @@ def load_sheet(sheet_name):
         return pd.DataFrame()
 
 # ---------------------------------------------------
-# 🔹 Charger les données initiales
+# 🔹 Données initiales
 # ---------------------------------------------------
 df_produits = load_sheet("Produits")
-df_clients = load_sheet("Clients")
 produits_dispo = df_produits['Produit'].tolist() if not df_produits.empty else []
 
 # ---------------------------------------------------
@@ -69,12 +67,15 @@ with tabs[0]:
             spreadsheet.worksheet("Stock").append_row(row)
             st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
 
-# -------------------- Onglet 2 : Enregistrer Vente --------------------
+# -------------------- Onglet 2 : Enregistrer Vente Multi-produits --------------------
 with tabs[1]:
-    st.header("Enregistrer une vente")
-    vente_enregistree = False
+    st.header("Enregistrer une vente multi-produits")
 
-    with st.form("form_vente"):
+    # Initialiser le panier
+    if "panier" not in st.session_state:
+        st.session_state.panier = []
+
+    with st.form("form_vente_multi"):
         produit_vente = st.selectbox("Produit vendu", produits_dispo)
         quantite_vente = st.number_input("Quantité vendue", min_value=1, step=1)
         client_nom = st.text_input("Nom du client")
@@ -85,62 +86,83 @@ with tabs[1]:
         total_vente = prix_unitaire * quantite_vente
         st.write(f"Prix unitaire : {prix_unitaire} | Total : {total_vente}")
 
-        submit_vente = st.form_submit_button("Enregistrer la vente")
+        if st.form_submit_button("Ajouter au panier"):
+            st.session_state.panier.append({
+                "Produit": produit_vente,
+                "Quantité": quantite_vente,
+                "Prix unitaire": prix_unitaire,
+                "Total": total_vente
+            })
 
-        if submit_vente:
+    # Afficher le panier
+    if st.session_state.panier:
+        st.subheader("Panier actuel")
+        df_panier = pd.DataFrame(st.session_state.panier)
+        st.dataframe(df_panier, use_container_width=True)
+
+        if st.button("Enregistrer la vente"):
+            # Vérification stock pour chaque produit
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
+            vente_valide = True
 
-            stock_dispo = df_stock[df_stock['Produit'] == produit_vente]['Quantité'].sum()
-            ventes_sum = df_ventes[df_ventes['Produit'] == produit_vente]['Quantité'].sum() if not df_ventes.empty else 0
-            stock_reel = stock_dispo - ventes_sum
+            for item in st.session_state.panier:
+                stock_dispo = df_stock[df_stock['Produit'] == item["Produit"]]['Quantité'].sum()
+                ventes_sum = df_ventes[df_ventes['Produit'] == item["Produit"]]['Quantité'].sum() if not df_ventes.empty else 0
+                stock_reel = stock_dispo - ventes_sum
+                if item["Quantité"] > stock_reel:
+                    st.error(f"Stock insuffisant pour {item['Produit']} ! Disponible : {stock_reel}")
+                    vente_valide = False
 
-            if quantite_vente > stock_reel:
-                st.error(f"Stock insuffisant ! Stock disponible : {stock_reel}")
-            else:
-                # Ajouter la vente
-                row_vente = [str(datetime.now()), client_nom, produit_vente, quantite_vente, prix_unitaire, total_vente]
-                spreadsheet.worksheet("Ventes").append_row(row_vente)
+            if vente_valide:
+                # Ajouter les ventes
+                for item in st.session_state.panier:
+                    row_vente = [str(datetime.now()), client_nom, client_email, client_tel,
+                                 item["Produit"], item["Quantité"], item["Prix unitaire"], item["Total"]]
+                    spreadsheet.worksheet("Ventes").append_row(row_vente)
 
-                # Ajouter client si nouveau
-                df_clients = load_sheet("Clients")
-                if client_nom not in df_clients['Nom'].tolist():
-                    row_client = [client_nom, client_email, client_tel]
-                    spreadsheet.worksheet("Clients").append_row(row_client)
+                st.success(f"Vente enregistrée pour {client_nom} avec {len(st.session_state.panier)} produits.")
 
-                st.success(f"Vente enregistrée pour {client_nom} : {quantite_vente} {produit_vente} ({total_vente})")
-                vente_enregistree = True
+                # Génération PDF simple
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", 'B', 14)
+                pdf.cell(200, 10, txt="FACTURE SHOWROOM", ln=True, align="C")
+                pdf.ln(5)
 
-    # Génération PDF
-    if vente_enregistree:
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", size=12)
-        pdf.cell(200, 10, txt="FACTURE SHOWROOM", ln=True, align="C")
-        pdf.ln(10)
-        pdf.cell(200, 10, txt=f"Client: {client_nom}", ln=True)
-        pdf.cell(200, 10, txt=f"Produit: {produit_vente}", ln=True)
-        pdf.cell(200, 10, txt=f"Quantité: {quantite_vente}", ln=True)
-        pdf.cell(200, 10, txt=f"Prix unitaire: {prix_unitaire}", ln=True)
-        pdf.cell(200, 10, txt=f"Total: {total_vente}", ln=True)
+                # Coordonnées client
+                pdf.set_font("Arial", size=12)
+                pdf.cell(200, 5, txt=f"Client: {client_nom}", ln=True)
+                pdf.cell(200, 5, txt=f"Email: {client_email} | Tel: {client_tel}", ln=True)
+                pdf.ln(5)
 
-        pdf_bytes = pdf.output(dest='S').encode('latin1')
-        pdf_io = io.BytesIO(pdf_bytes)
+                # Tableau produits
+                pdf.cell(60, 10, "Produit", 1)
+                pdf.cell(30, 10, "Quantité", 1)
+                pdf.cell(50, 10, "Prix Unitaire", 1)
+                pdf.cell(50, 10, "Total", 1, ln=True)
 
-        st.download_button(
-            label="📥 Télécharger la facture",
-            data=pdf_io,
-            file_name=f"facture_{client_nom}.pdf",
-            mime="application/pdf"
-        )
+                for item in st.session_state.panier:
+                    pdf.cell(60, 10, str(item["Produit"]), 1)
+                    pdf.cell(30, 10, str(item["Quantité"]), 1)
+                    pdf.cell(50, 10, str(item["Prix unitaire"]), 1)
+                    pdf.cell(50, 10, str(item["Total"]), 1, ln=True)
+
+                pdf_bytes = pdf.output(dest='S').encode('latin1')
+                pdf_io = io.BytesIO(pdf_bytes)
+
+                st.download_button(
+                    label="📥 Télécharger la facture",
+                    data=pdf_io,
+                    file_name=f"facture_{client_nom}.pdf",
+                    mime="application/pdf"
+                )
+
+                st.session_state.panier = []  # Vider le panier après enregistrement
 
 # -------------------- Onglet 3 : État Stock --------------------
 with tabs[2]:
     st.header("État du stock")
-    if st.button("🔄 Actualiser stock"):
-        df_stock = load_sheet("Stock")
-        df_ventes = load_sheet("Ventes")
-
     df_stock = load_sheet("Stock")
     df_ventes = load_sheet("Ventes")
 
@@ -161,8 +183,6 @@ with tabs[2]:
 # -------------------- Onglet 4 : Historique Ventes --------------------
 with tabs[3]:
     st.header("Historique des ventes")
-
-    # Charger les ventes sans cache pour voir les mises à jour immédiates
     try:
         sheet_ventes = spreadsheet.worksheet("Ventes")
         data_ventes = sheet_ventes.get_all_records()
