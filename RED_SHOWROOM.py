@@ -43,13 +43,9 @@ df_produits = load_sheet("Produits")
 produits_dispo = df_produits['Produit'].tolist() if not df_produits.empty else []
 
 # ---------------------------------------------------
-# 🔹 Onglets avec gestion onglet actif
+# 🔹 Onglets
 # ---------------------------------------------------
-if "active_tab" not in st.session_state:
-    st.session_state.active_tab = 0  # 0 = Ajouter Stock, 1 = Enregistrer Vente, etc.
-
-tabs_labels = ["🛒 Ajouter Stock", "💰 Enregistrer Vente", "📦 État Stock", "📄 Historique Ventes"]
-tabs = st.tabs(tabs_labels)
+tabs = st.tabs(["🛒 Ajouter Stock", "💰 Enregistrer Vente", "📦 État Stock", "📄 Historique Ventes"])
 
 # ---------------------------------------------------
 # Onglet 1 : Ajouter Stock
@@ -108,9 +104,7 @@ with tabs[1]:
         df_panier = pd.DataFrame(st.session_state.panier)
         st.dataframe(df_panier, use_container_width=True)
 
-        # ⚡ Correction onglet actif
         if st.button("Enregistrer la vente", key="enregistrer_vente"):
-            st.session_state.active_tab = 1  # reste sur Enregistrer Vente
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
             vente_valide = True
@@ -272,7 +266,3 @@ with tabs[3]:
     else:
         st.write("Aucune vente enregistrée.")
 
-# ---------------------------------------------------
-# ⚡ Maintenir l'onglet actif après actions
-# ---------------------------------------------------
-st.session_state.active_tab = st.session_state.get("active_tab", 0)
