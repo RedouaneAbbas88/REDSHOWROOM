@@ -127,11 +127,10 @@ if vente_enregistree:
     pdf.cell(200, 10, txt=f"Prix unitaire: {prix_unitaire}", ln=True)
     pdf.cell(200, 10, txt=f"Total: {total_vente}", ln=True)
 
-    # Générer le PDF en mémoire
-    pdf_bytes = pdf.output(dest='S').encode('latin1')  # 'S' retourne le PDF comme string
+    # PDF en mémoire
+    pdf_bytes = pdf.output(dest='S').encode('latin1')
     pdf_io = io.BytesIO(pdf_bytes)
 
-    # Bouton téléchargement
     st.download_button(
         label="📥 Télécharger la facture",
         data=pdf_io,
@@ -151,13 +150,22 @@ if not df_stock.empty:
 
     if not df_ventes.empty:
         ventes_group = df_ventes.groupby("Produit")['Quantité'].sum().reset_index()
+        ventes_group.rename(columns={'Quantité': 'Ventes'}, inplace=True)
         stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left")
-        stock_reel['Quantité_y'] = stock_reel['Quantité_y'].fillna(0)
-        stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_y']
+        stock_reel['Ventes'] = stock_reel['Ventes'].fillna(0)
+        stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Ventes']
     else:
-        # Pas de ventes encore -> stock restant = stock total
         stock_reel['Stock restant'] = stock_reel['Quantité']
 
     st.dataframe(stock_reel[['Produit', 'Stock restant']], use_container_width=True)
 else:
     st.write("Aucun stock enregistré.")
+
+# ---------------------------------------------------
+# 🔹 Historique des ventes
+# ---------------------------------------------------
+st.header("📄 Historique des Ventes")
+if not df_ventes.empty:
+    st.dataframe(df_ventes, use_container_width=True)
+else:
+    st.write("Aucune vente enregistrée.")
