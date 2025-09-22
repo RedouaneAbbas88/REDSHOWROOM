@@ -148,9 +148,15 @@ df_ventes = load_sheet("Ventes")
 
 if not df_stock.empty:
     stock_reel = df_stock.groupby("Produit")['Quantité'].sum().reset_index()
+
     if not df_ventes.empty:
         ventes_group = df_ventes.groupby("Produit")['Quantité'].sum().reset_index()
         stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left")
+
+        # Vérifier si la colonne 'Quantité_y' existe, sinon créer avec des 0
+        if 'Quantité_y' not in stock_reel.columns:
+            stock_reel['Quantité_y'] = 0
+
         stock_reel['Quantité_y'] = stock_reel['Quantité_y'].fillna(0)
         stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_y']
     else:
