@@ -29,7 +29,7 @@ spreadsheet = client.open_by_key(SPREADSHEET_ID)
 # ---------------------------------------------------
 # 🔹 Fonction pour charger une feuille
 # ---------------------------------------------------
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=0)  # ttl=0 pour toujours recharger (mise à jour automatique)
 def load_sheet(sheet_name):
     try:
         sheet = spreadsheet.worksheet(sheet_name)
@@ -68,13 +68,13 @@ with tab_stock:
             row = [str(datetime.now()), produit_stock, quantite_stock, prix_achat]
             spreadsheet.worksheet("Stock").append_row(row)
             st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
+            st.experimental_rerun()  # Force la mise à jour immédiate des onglets
 
 # ---------------------------------------------------
 # 🔹 Onglet Enregistrer Vente
 # ---------------------------------------------------
 with tab_vente:
     st.header("💰 Enregistrer une vente")
-    vente_enregistree = False
     with st.form("form_vente"):
         produit_vente = st.selectbox("Produit vendu", produits_dispo)
         quantite_vente = st.number_input("Quantité vendue", min_value=1, step=1)
@@ -90,7 +90,6 @@ with tab_vente:
         if submit_vente:
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
-
             stock_dispo = df_stock[df_stock['Produit'] == produit_vente]['Quantité'].sum()
             ventes_sum = df_ventes[df_ventes['Produit'] == produit_vente]['Quantité'].sum() if not df_ventes.empty else 0
             stock_reel = stock_dispo - ventes_sum
@@ -98,16 +97,17 @@ with tab_vente:
             if quantite_vente > stock_reel:
                 st.error(f"Stock insuffisant ! Stock disponible : {stock_reel}")
             else:
+                # Ajouter la vente
                 row_vente = [str(datetime.now()), client_nom, produit_vente, quantite_vente, prix_unitaire, total_vente]
                 spreadsheet.worksheet("Ventes").append_row(row_vente)
 
+                # Ajouter client si nouveau
                 df_clients = load_sheet("Clients")
                 if client_nom not in df_clients['Nom'].tolist():
                     row_client = [client_nom, client_email, client_tel]
                     spreadsheet.worksheet("Clients").append_row(row_client)
 
                 st.success(f"Vente enregistrée pour {client_nom} : {quantite_vente} {produit_vente} ({total_vente})")
-                vente_enregistree = True
 
                 # Génération facture PDF
                 pdf = FPDF()
@@ -128,6 +128,8 @@ with tab_vente:
                     file_name=f"facture_{client_nom}.pdf",
                     mime="application/pdf"
                 )
+
+                st.experimental_rerun()  # Mise à jour immédiate des onglets
 
 # ---------------------------------------------------
 # 🔹 Onglet État du Stock
