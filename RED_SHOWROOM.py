@@ -70,6 +70,7 @@ with tabs[1]:
     if "panier" not in st.session_state:
         st.session_state.panier = []
 
+    # Formulaire pour ajouter un produit au panier
     with st.form("form_vente_multi"):
         produit_vente = st.selectbox("Produit vendu", produits_dispo)
         quantite_vente = st.number_input("Quantité vendue", min_value=1, step=1)
@@ -99,11 +100,30 @@ with tabs[1]:
                 "Total": total_vente
             })
 
+    # Affichage du panier avec possibilité de modifier ou supprimer
     if st.session_state.panier:
-        st.subheader("Panier actuel")
+        st.subheader("Panier actuel (modifiable)")
+        # Modification de la quantité ou suppression des produits
+        for i, item in enumerate(st.session_state.panier):
+            col1, col2, col3 = st.columns([4, 2, 1])
+            with col1:
+                st.write(item["Produit"])
+            with col2:
+                nouvelle_quantite = st.number_input(
+                    f"Quantité {i}", min_value=1, value=item["Quantité"], key=f"qty_{i}"
+                )
+                st.session_state.panier[i]["Quantité"] = nouvelle_quantite
+                st.session_state.panier[i]["Total"] = nouvelle_quantite * item["Prix unitaire"]
+            with col3:
+                if st.button("❌ Supprimer", key=f"del_{i}"):
+                    st.session_state.panier.pop(i)
+                    st.experimental_rerun()  # Recharger pour mettre à jour le panier
+
+        # Afficher le panier mis à jour
         df_panier = pd.DataFrame(st.session_state.panier)
         st.dataframe(df_panier, use_container_width=True)
 
+        # Bouton pour enregistrer la vente
         if st.button("Enregistrer la vente", key="enregistrer_vente"):
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
@@ -265,4 +285,3 @@ with tabs[3]:
         st.dataframe(df_ventes, use_container_width=True)
     else:
         st.write("Aucune vente enregistrée.")
-
