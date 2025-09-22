@@ -5,6 +5,7 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime
 from fpdf import FPDF
 import io
+from num2words import num2words
 
 # ---------------------------------------------------
 # ⚙️ Configuration Streamlit
@@ -72,6 +73,8 @@ with tabs[1]:
     with st.form("form_vente_multi"):
         produit_vente = st.selectbox("Produit vendu", produits_dispo)
         quantite_vente = st.number_input("Quantité vendue", min_value=1, step=1)
+
+        # Infos client
         client_nom = st.text_input("Nom du client")
         client_email = st.text_input("Email du client")
         client_tel = st.text_input("Téléphone du client")
@@ -80,9 +83,11 @@ with tabs[1]:
         client_art = st.text_input("ART du client")
         client_adresse = st.text_input("Adresse du client")
 
+        # Prix produit
         prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0]) if not df_produits.empty else 0.0
         total_vente = prix_unitaire * quantite_vente
-        st.write(f"Prix unitaire : {prix_unitaire} | Total HT : {total_vente} | Total TTC : {round(total_vente*1.19,2)}")
+
+        st.write(f"Prix unitaire : {prix_unitaire} | Total HT : {total_vente:.2f} | Total TTC : {round(total_vente*1.19,2)}")
 
         if st.form_submit_button("Ajouter au panier"):
             st.session_state.panier.append({
@@ -102,6 +107,7 @@ with tabs[1]:
             df_ventes = load_sheet("Ventes")
             vente_valide = True
 
+            # Vérif stock
             for item in st.session_state.panier:
                 stock_dispo = df_stock[df_stock['Produit'] == item["Produit"]]['Quantité'].sum()
                 ventes_sum = df_ventes[df_ventes['Produit'] == item["Produit"]]['Quantité'].sum() if not df_ventes.empty else 0
@@ -111,7 +117,7 @@ with tabs[1]:
                     vente_valide = False
 
             if vente_valide:
-                # Ajouter les ventes
+                # Ajouter ventes
                 for item in st.session_state.panier:
                     row_vente = [str(datetime.now()), client_nom, client_email, client_tel,
                                  client_rc, client_nif, client_art, client_adresse,
@@ -120,14 +126,14 @@ with tabs[1]:
 
                 st.success(f"Vente enregistrée pour {client_nom} avec {len(st.session_state.panier)} produits.")
 
-                # Coordonnées entreprise fixes
+                # Infos entreprise
                 entreprise_nom = "ElectRoyal"
                 entreprise_adresse = "123 Rue Principale, Alger"
                 entreprise_rc = "RC: 123456"
                 entreprise_nif = "NIF: 654321"
                 entreprise_art = "ART: 987654"
 
-                # Génération PDF
+                # Création PDF facture
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Arial", 'B', 14)
@@ -142,11 +148,10 @@ with tabs[1]:
 
                 pdf.cell(200, 5, txt=f"Client: {client_nom}", ln=True)
                 pdf.cell(200, 5, txt=f"Email: {client_email} | Tel: {client_tel}", ln=True)
-                pdf.cell(200, 5,
-                         txt=f"RC: {client_rc} | NIF: {client_nif} | ART: {client_art} | Adresse: {client_adresse}",
-                         ln=True)
+                pdf.cell(200, 5, txt=f"RC: {client_rc} | NIF: {client_nif} | ART: {client_art} | Adresse: {client_adresse}", ln=True)
                 pdf.ln(5)
 
+                # Tableau produits
                 pdf.cell(50, 10, "Produit", 1)
                 pdf.cell(30, 10, "Quantité", 1)
                 pdf.cell(40, 10, "Prix HT", 1)
@@ -172,8 +177,17 @@ with tabs[1]:
                 pdf.cell(160, 10, "Total TTC:", 0, align="R")
                 pdf.cell(30, 10, f"{total_ttc:.2f}", 1, ln=True)
 
-                # 🔹 Montant en lettres
-                montant_lettres = num2words(total_ttc, lang='fr').replace("virgule", "et") + " dinars algériens"
+                # 🔹 Montant en lettres robuste
+                ttc_int = int(total_ttc)
+                ttc_centimes = int(round((total_ttc - ttc_int) * 100))
+                if ttc_centimes > 0:
+                    montant_lettres = (
+                        num2words(ttc_int, lang='fr') + " dinars et " +
+                        num2words(ttc_centimes, lang='fr') + " centimes algériens"
+                    )
+                else:
+                    montant_lettres = num2words(ttc_int, lang='fr') + " dinars algériens"
+
                 pdf.ln(10)
                 pdf.set_font("Arial", 'I', 11)
                 pdf.multi_cell(0, 10, f"Arrêté la présente facture à la somme de : {montant_lettres}")
@@ -188,6 +202,7 @@ with tabs[1]:
                     file_name=f"facture_{client_nom}.pdf",
                     mime="application/pdf"
                 )
+
                 st.session_state.panier = []
 
 # ---------------------------------------------------
@@ -198,10 +213,10 @@ with tabs[2]:
     df_stock = load_sheet("Stock")
     df_ventes = load_sheet("Ventes")
 
-    if not df_stock.empty:
-        stock_reel = df_stock.groupby("Produit")['Quantité'].sum().reset_index()
+    if not df_stock.empty and "Produit" in df_stock.columns and "Quantité" in df_stock.columns:
+        stock_reel = df_stock.groupby("Produit")["Quantité"].sum().reset_index()
         if not df_ventes.empty and "Produit" in df_ventes.columns and "Quantité" in df_ventes.columns:
-            ventes_group = df_ventes.groupby("Produit")['Quantité'].sum().reset_index()
+            ventes_group = df_ventes.groupby("Produit")["Quantité"].sum().reset_index()
             stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left", suffixes=('', '_vendu'))
             stock_reel['Quantité_vendu'] = stock_reel['Quantité_vendu'].fillna(0)
             stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_vendu']
