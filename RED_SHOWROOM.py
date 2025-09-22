@@ -144,26 +144,21 @@ df_stock = load_sheet("Stock")
 df_ventes = load_sheet("Ventes")
 
 if not df_stock.empty:
+    # Total stock par produit
     stock_reel = df_stock.groupby("Produit")['Quantité'].sum().reset_index()
 
     if not df_ventes.empty:
+        # Total ventes par produit
         ventes_group = df_ventes.groupby("Produit")['Quantité'].sum().reset_index()
-        stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left")
-        stock_reel['Quantité_y'] = stock_reel['Quantité_y'].fillna(0)
-        stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_y']
+        # Merge pour soustraire ventes
+        stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left", suffixes=('', '_vendu'))
+        # Remplir NaN pour produits sans vente
+        stock_reel['Quantité_vendu'] = stock_reel['Quantité_vendu'].fillna(0)
+        # Calcul stock restant
+        stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_vendu']
     else:
         stock_reel['Stock restant'] = stock_reel['Quantité']
 
     st.dataframe(stock_reel[['Produit', 'Stock restant']], use_container_width=True)
 else:
     st.write("Aucun stock enregistré.")
-
-# ---------------------------------------------------
-# 🔹 Historique des ventes
-# ---------------------------------------------------
-st.header("📄 Historique des Ventes")
-df_ventes = load_sheet("Ventes")
-if not df_ventes.empty:
-    st.dataframe(df_ventes, use_container_width=True)
-else:
-    st.write("Aucune vente enregistrée.")
