@@ -9,10 +9,7 @@ import io
 # ---------------------------------------------------
 # ⚙️ Configuration Streamlit
 # ---------------------------------------------------
-st.set_page_config(
-    page_title="Showroom Stock & Vente",
-    layout="wide"
-)
+st.set_page_config(page_title="Showroom Stock & Vente", layout="wide")
 st.title("📊 Gestion Showroom")
 
 # ---------------------------------------------------
@@ -31,9 +28,8 @@ SPREADSHEET_ID = "1r4xnyKDaY6jzYGLUORKHlPeGKMCCLkkIx_XvSkIobhc"
 spreadsheet = client.open_by_key(SPREADSHEET_ID)
 
 # ---------------------------------------------------
-# 🔹 Fonction pour charger une feuille
+# 🔹 Fonction pour charger une feuille (rafraîchissement rapide)
 # ---------------------------------------------------
-@st.cache_data(ttl=10)  # Rafraîchit les données toutes les 10 secondes
 def load_sheet(sheet_name):
     try:
         sheet = spreadsheet.worksheet(sheet_name)
@@ -44,10 +40,9 @@ def load_sheet(sheet_name):
         return pd.DataFrame()
 
 # ---------------------------------------------------
-# 🔹 Charger les données initiales
+# 🔹 Données initiales
 # ---------------------------------------------------
 df_produits = load_sheet("Produits")
-df_clients = load_sheet("Clients")
 produits_dispo = df_produits['Produit'].tolist() if not df_produits.empty else []
 
 # ---------------------------------------------------
@@ -80,6 +75,10 @@ with tabs[1]:
         client_nom = st.text_input("Nom du client")
         client_email = st.text_input("Email du client")
         client_tel = st.text_input("Téléphone du client")
+        client_rc = st.text_input("RC du client")
+        client_nif = st.text_input("NIF du client")
+        client_art = st.text_input("ART du client")
+        client_adresse = st.text_area("Adresse du client")
 
         prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0]) if not df_produits.empty else 0.0
         total_vente = prix_unitaire * quantite_vente
@@ -98,31 +97,55 @@ with tabs[1]:
             if quantite_vente > stock_reel:
                 st.error(f"Stock insuffisant ! Stock disponible : {stock_reel}")
             else:
-                # Ajouter la vente
-                row_vente = [str(datetime.now()), client_nom, produit_vente, quantite_vente, prix_unitaire, total_vente]
+                # Numéro facture automatique
+                last_invoice = df_ventes['Num facture'].max() if not df_ventes.empty else 0
+                num_facture = int(last_invoice) + 1 if last_invoice else 1
+
+                # Ajouter la vente dans Google Sheet
+                row_vente = [
+                    str(datetime.now()), client_nom, client_email, client_tel,
+                    client_rc, client_nif, client_art, client_adresse,
+                    produit_vente, quantite_vente, prix_unitaire, total_vente, num_facture
+                ]
                 spreadsheet.worksheet("Ventes").append_row(row_vente)
 
-                # Ajouter client si nouveau
-                df_clients = load_sheet("Clients")
-                if client_nom not in df_clients['Nom'].tolist():
-                    row_client = [client_nom, client_email, client_tel]
-                    spreadsheet.worksheet("Clients").append_row(row_client)
-
-                st.success(f"Vente enregistrée pour {client_nom} : {quantite_vente} {produit_vente} ({total_vente})")
+                st.success(f"Vente enregistrée pour {client_nom} : {quantite_vente} {produit_vente} ({total_vente}) | Facture N°{num_facture}")
                 vente_enregistree = True
 
-    # Génération PDF
+    # ---------------------------------------------------
+    # 🔹 Génération PDF avec infos entreprise + client
+    # ---------------------------------------------------
     if vente_enregistree:
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", size=12)
+
+        # Infos entreprise (fixes)
         pdf.cell(200, 10, txt="FACTURE SHOWROOM", ln=True, align="C")
-        pdf.ln(10)
-        pdf.cell(200, 10, txt=f"Client: {client_nom}", ln=True)
-        pdf.cell(200, 10, txt=f"Produit: {produit_vente}", ln=True)
-        pdf.cell(200, 10, txt=f"Quantité: {quantite_vente}", ln=True)
-        pdf.cell(200, 10, txt=f"Prix unitaire: {prix_unitaire}", ln=True)
-        pdf.cell(200, 10, txt=f"Total: {total_vente}", ln=True)
+        pdf.ln(5)
+        pdf.cell(200, 8, txt="Entreprise : ELECTROYAL", ln=True)
+        pdf.cell(200, 8, txt="RC : 123456", ln=True)
+        pdf.cell(200, 8, txt="NIF : 654321", ln=True)
+        pdf.cell(200, 8, txt="ART : 987654", ln=True)
+        pdf.cell(200, 8, txt="Adresse : 12 Rue Principale, Alger", ln=True)
+        pdf.ln(5)
+
+        # Infos client
+        pdf.cell(200, 8, txt=f"Client : {client_nom}", ln=True)
+        pdf.cell(200, 8, txt=f"Email : {client_email}", ln=True)
+        pdf.cell(200, 8, txt=f"Téléphone : {client_tel}", ln=True)
+        pdf.cell(200, 8, txt=f"RC : {client_rc}", ln=True)
+        pdf.cell(200, 8, txt=f"NIF : {client_nif}", ln=True)
+        pdf.cell(200, 8, txt=f"ART : {client_art}", ln=True)
+        pdf.multi_cell(200, 8, txt=f"Adresse : {client_adresse}")
+        pdf.ln(5)
+
+        # Détails de la vente
+        pdf.cell(200, 8, txt=f"Produit : {produit_vente}", ln=True)
+        pdf.cell(200, 8, txt=f"Quantité : {quantite_vente}", ln=True)
+        pdf.cell(200, 8, txt=f"Prix unitaire : {prix_unitaire}", ln=True)
+        pdf.cell(200, 8, txt=f"Total : {total_vente}", ln=True)
+        pdf.cell(200, 8, txt=f"Numéro facture : {num_facture}", ln=True)
 
         pdf_bytes = pdf.output(dest='S').encode('latin1')
         pdf_io = io.BytesIO(pdf_bytes)
@@ -130,20 +153,15 @@ with tabs[1]:
         st.download_button(
             label="📥 Télécharger la facture",
             data=pdf_io,
-            file_name=f"facture_{client_nom}.pdf",
+            file_name=f"facture_{num_facture}_{client_nom}.pdf",
             mime="application/pdf"
         )
 
 # -------------------- Onglet 3 : État Stock --------------------
 with tabs[2]:
     st.header("État du stock")
-    if st.button("🔄 Actualiser stock"):
-        df_stock = load_sheet("Stock")
-        df_ventes = load_sheet("Ventes")
-
     df_stock = load_sheet("Stock")
     df_ventes = load_sheet("Ventes")
-
     if not df_stock.empty:
         stock_reel = df_stock.groupby("Produit")['Quantité'].sum().reset_index()
         if not df_ventes.empty:
@@ -153,7 +171,6 @@ with tabs[2]:
             stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_vendu']
         else:
             stock_reel['Stock restant'] = stock_reel['Quantité']
-
         st.dataframe(stock_reel[['Produit', 'Stock restant']], use_container_width=True)
     else:
         st.write("Aucun stock enregistré.")
@@ -161,16 +178,7 @@ with tabs[2]:
 # -------------------- Onglet 4 : Historique Ventes --------------------
 with tabs[3]:
     st.header("Historique des ventes")
-
-    # Charger les ventes sans cache pour voir les mises à jour immédiates
-    try:
-        sheet_ventes = spreadsheet.worksheet("Ventes")
-        data_ventes = sheet_ventes.get_all_records()
-        df_ventes = pd.DataFrame(data_ventes)
-    except Exception as e:
-        st.error(f"Erreur lors du chargement des ventes : {e}")
-        df_ventes = pd.DataFrame()
-
+    df_ventes = load_sheet("Ventes")
     if not df_ventes.empty:
         st.dataframe(df_ventes, use_container_width=True)
     else:
