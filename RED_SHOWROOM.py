@@ -142,7 +142,9 @@ with tabs[1]:
 
                 pdf.cell(200, 5, txt=f"Client: {client_nom}", ln=True)
                 pdf.cell(200, 5, txt=f"Email: {client_email} | Tel: {client_tel}", ln=True)
-                pdf.cell(200, 5, txt=f"RC: {client_rc} | NIF: {client_nif} | ART: {client_art} | Adresse: {client_adresse}", ln=True)
+                pdf.cell(200, 5,
+                         txt=f"RC: {client_rc} | NIF: {client_nif} | ART: {client_art} | Adresse: {client_adresse}",
+                         ln=True)
                 pdf.ln(5)
 
                 pdf.cell(50, 10, "Produit", 1)
@@ -160,7 +162,7 @@ with tabs[1]:
                     pdf.cell(30, 10, str(item["Quantité"]), 1)
                     pdf.cell(40, 10, f"{item['Prix unitaire']:.2f}", 1)
                     pdf.cell(40, 10, f"{item['Total']:.2f}", 1)
-                    pdf.cell(30, 10, f"{item['Total']*1.19:.2f}", 1, ln=True)
+                    pdf.cell(30, 10, f"{item['Total'] * 1.19:.2f}", 1, ln=True)
 
                 total_tva = total_ttc - total_ht
                 pdf.cell(160, 10, "Total HT:", 0, align="R")
@@ -170,6 +172,13 @@ with tabs[1]:
                 pdf.cell(160, 10, "Total TTC:", 0, align="R")
                 pdf.cell(30, 10, f"{total_ttc:.2f}", 1, ln=True)
 
+                # 🔹 Montant en lettres
+                montant_lettres = num2words(total_ttc, lang='fr').replace("virgule", "et") + " dinars algériens"
+                pdf.ln(10)
+                pdf.set_font("Arial", 'I', 11)
+                pdf.multi_cell(0, 10, f"Arrêté la présente facture à la somme de : {montant_lettres}")
+
+                # Export PDF
                 pdf_bytes = pdf.output(dest='S').encode('latin1')
                 pdf_io = io.BytesIO(pdf_bytes)
 
@@ -179,7 +188,6 @@ with tabs[1]:
                     file_name=f"facture_{client_nom}.pdf",
                     mime="application/pdf"
                 )
-
                 st.session_state.panier = []
 
 # ---------------------------------------------------
