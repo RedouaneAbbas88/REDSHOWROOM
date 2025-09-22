@@ -127,11 +127,17 @@ if vente_enregistree:
     pdf.cell(200, 10, txt=f"Prix unitaire: {prix_unitaire}", ln=True)
     pdf.cell(200, 10, txt=f"Total: {total_vente}", ln=True)
 
-    pdf_output = io.BytesIO()
-    pdf.output(pdf_output)
-    pdf_output.seek(0)
+    # Générer le PDF en mémoire
+    pdf_bytes = pdf.output(dest='S').encode('latin1')  # 'S' retourne le PDF comme string
+    pdf_io = io.BytesIO(pdf_bytes)
 
-    st.download_button("📥 Télécharger la facture", pdf_output, file_name=f"facture_{client_nom}.pdf")
+    # Bouton téléchargement
+    st.download_button(
+        label="📥 Télécharger la facture",
+        data=pdf_io,
+        file_name=f"facture_{client_nom}.pdf",
+        mime="application/pdf"
+    )
 
 # ---------------------------------------------------
 # 🔹 État du stock
