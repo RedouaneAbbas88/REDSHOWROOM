@@ -9,14 +9,19 @@ import io
 # ---------------------------------------------------
 # ⚙️ Configuration Streamlit
 # ---------------------------------------------------
-st.set_page_config(page_title="Showroom Stock & Vente", layout="wide")
+st.set_page_config(
+    page_title="Showroom Stock & Vente",
+    layout="wide"
+)
 st.title("📊 Gestion Showroom")
 
 # ---------------------------------------------------
 # 🔹 Connexion Google Sheets
 # ---------------------------------------------------
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
-          "https://www.googleapis.com/auth/drive"]
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
 
 creds_dict = st.secrets["google"]
 creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
@@ -60,7 +65,6 @@ with st.form("form_stock"):
         row = [str(datetime.now()), produit_stock, quantite_stock, prix_achat]
         spreadsheet.worksheet("Stock").append_row(row)
         st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
-        st.cache_data.clear()  # ✅ force reload pour mise à jour immédiate
 
 # ---------------------------------------------------
 # 🔹 Formulaire Vente
@@ -76,22 +80,21 @@ with st.form("form_vente"):
     client_email = st.text_input("Email du client")
     client_tel = st.text_input("Téléphone du client")
 
-    if not df_produits.empty and produit_vente in df_produits['Produit'].values:
+    if not df_produits.empty:
         prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0])
     else:
         prix_unitaire = 0.0
-
     total_vente = prix_unitaire * quantite_vente
     st.write(f"Prix unitaire : {prix_unitaire} | Total : {total_vente}")
 
     submit_vente = st.form_submit_button("Enregistrer la vente")
 
     if submit_vente:
+        # Recharger stock et ventes
         df_stock = load_sheet("Stock")
         df_ventes = load_sheet("Ventes")
-        df_clients = load_sheet("Clients")
 
-        stock_dispo = df_stock[df_stock['Produit'] == produit_vente]['Quantité'].sum() if not df_stock.empty else 0
+        stock_dispo = df_stock[df_stock['Produit'] == produit_vente]['Quantité'].sum()
         ventes_sum = df_ventes[df_ventes['Produit'] == produit_vente]['Quantité'].sum() if not df_ventes.empty else 0
         stock_reel = stock_dispo - ventes_sum
 
@@ -103,11 +106,12 @@ with st.form("form_vente"):
             spreadsheet.worksheet("Ventes").append_row(row_vente)
 
             # Ajouter client si nouveau
+            df_clients = load_sheet("Clients")
             if client_nom not in df_clients['Nom'].tolist():
-                spreadsheet.worksheet("Clients").append_row([client_nom, client_email, client_tel])
+                row_client = [client_nom, client_email, client_tel]
+                spreadsheet.worksheet("Clients").append_row(row_client)
 
             st.success(f"Vente enregistrée pour {client_nom} : {quantite_vente} {produit_vente} ({total_vente})")
-            st.cache_data.clear()  # ✅ force reload
             vente_enregistree = True
 
 # ---------------------------------------------------
@@ -125,7 +129,6 @@ if vente_enregistree:
     pdf.cell(200, 10, txt=f"Prix unitaire: {prix_unitaire}", ln=True)
     pdf.cell(200, 10, txt=f"Total: {total_vente}", ln=True)
 
-    # Générer le PDF en mémoire
     pdf_bytes = pdf.output(dest='S').encode('latin1')
     pdf_io = io.BytesIO(pdf_bytes)
 
@@ -144,21 +147,25 @@ df_stock = load_sheet("Stock")
 df_ventes = load_sheet("Ventes")
 
 if not df_stock.empty:
-    # Total stock par produit
     stock_reel = df_stock.groupby("Produit")['Quantité'].sum().reset_index()
-
     if not df_ventes.empty:
-        # Total ventes par produit
         ventes_group = df_ventes.groupby("Produit")['Quantité'].sum().reset_index()
-        # Merge pour soustraire ventes
-        stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left", suffixes=('', '_vendu'))
-        # Remplir NaN pour produits sans vente
-        stock_reel['Quantité_vendu'] = stock_reel['Quantité_vendu'].fillna(0)
-        # Calcul stock restant
-        stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_vendu']
+        stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left")
+        stock_reel['Quantité_y'] = stock_reel['Quantité_y'].fillna(0)
+        stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_y']
     else:
         stock_reel['Stock restant'] = stock_reel['Quantité']
 
     st.dataframe(stock_reel[['Produit', 'Stock restant']], use_container_width=True)
 else:
     st.write("Aucun stock enregistré.")
+
+# ---------------------------------------------------
+# 🔹 Historique des ventes
+# ---------------------------------------------------
+st.header("📄 Historique des Ventes")
+df_ventes = load_sheet("Ventes")
+if not df_ventes.empty:
+    st.dataframe(df_ventes, use_container_width=True)
+else:
+    st.write("Aucune vente enregistrée.")
