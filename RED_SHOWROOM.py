@@ -37,6 +37,29 @@ def load_sheet(sheet_name):
         return pd.DataFrame()
 
 # ---------------------------------------------------
+# 🔹 Fonction pour gérer numéros de factures
+# ---------------------------------------------------
+def get_next_invoice_number():
+    try:
+        sheet = spreadsheet.worksheet("Invoices")
+    except:
+        sheet = spreadsheet.add_worksheet(title="Invoices", rows=1000, cols=2)
+        sheet.append_row(["Numéro", "Date"])
+
+    records = sheet.get_all_records()
+    if records:
+        last_number = records[-1]["Numéro"]
+        last_num = int(last_number.split(":")[1].split("/")[0])
+    else:
+        last_num = 0
+
+    new_num = last_num + 1
+    current_year = datetime.now().year
+    invoice_number = f"Facture Num : {new_num:03d}/{current_year}"
+    sheet.append_row([invoice_number, str(datetime.now())])
+    return invoice_number
+
+# ---------------------------------------------------
 # 🔹 Données initiales
 # ---------------------------------------------------
 df_produits = load_sheet("Produits")
@@ -126,82 +149,86 @@ with tabs[1]:
 
                 st.success(f"Vente enregistrée pour {client_nom} avec {len(st.session_state.panier)} produits.")
 
-                # Infos entreprise
-                entreprise_nom = "ElectRoyal"
-                entreprise_adresse = "123 Rue Principale, Alger"
-                entreprise_rc = "RC: 123456"
-                entreprise_nif = "NIF: 654321"
-                entreprise_art = "ART: 987654"
+                # 👉 Génération facture uniquement si demandé
+                if st.checkbox("Générer une facture PDF pour le client ?"):
+                    invoice_number = get_next_invoice_number()
 
-                # Création PDF facture
-                pdf = FPDF()
-                pdf.add_page()
-                pdf.set_font("Arial", 'B', 14)
-                pdf.cell(200, 10, txt="FACTURE SHOWROOM", ln=True, align="C")
-                pdf.ln(5)
+                    # Infos entreprise
+                    entreprise_nom = "NORTH AFRICA ELECTRONICS"
+                    entreprise_adresse = "123 Rue Principale, Alger"
+                    entreprise_rc = "RC: 16/00-1052043 B23"
+                    entreprise_nif = "NIF: 002316105204354"
+                    entreprise_art = "ART: 002316300298344"
 
-                pdf.set_font("Arial", size=12)
-                pdf.cell(200, 5, txt=f"{entreprise_nom}", ln=True)
-                pdf.cell(200, 5, txt=f"{entreprise_adresse}", ln=True)
-                pdf.cell(200, 5, txt=f"{entreprise_rc} | {entreprise_nif} | {entreprise_art}", ln=True)
-                pdf.ln(5)
+                    # Création PDF facture
+                    pdf = FPDF()
+                    pdf.add_page()
+                    pdf.set_font("Arial", 'B', 14)
+                    pdf.cell(200, 10, txt=invoice_number, ln=True, align="C")
+                    pdf.ln(5)
 
-                pdf.cell(200, 5, txt=f"Client: {client_nom}", ln=True)
-                pdf.cell(200, 5, txt=f"Email: {client_email} | Tel: {client_tel}", ln=True)
-                pdf.cell(200, 5, txt=f"RC: {client_rc} | NIF: {client_nif} | ART: {client_art} | Adresse: {client_adresse}", ln=True)
-                pdf.ln(5)
+                    pdf.set_font("Arial", size=12)
+                    pdf.cell(200, 5, txt=f"{entreprise_nom}", ln=True)
+                    pdf.cell(200, 5, txt=f"{entreprise_adresse}", ln=True)
+                    pdf.cell(200, 5, txt=f"{entreprise_rc} | {entreprise_nif} | {entreprise_art}", ln=True)
+                    pdf.ln(5)
 
-                # Tableau produits
-                pdf.cell(50, 10, "Produit", 1)
-                pdf.cell(30, 10, "Quantité", 1)
-                pdf.cell(40, 10, "Prix HT", 1)
-                pdf.cell(40, 10, "Total HT", 1)
-                pdf.cell(30, 10, "Total TTC", 1, ln=True)
+                    pdf.cell(200, 5, txt=f"Client: {client_nom}", ln=True)
+                    pdf.cell(200, 5, txt=f"Email: {client_email} | Tel: {client_tel}", ln=True)
+                    pdf.cell(200, 5, txt=f"RC: {client_rc} | NIF: {client_nif} | ART: {client_art} | Adresse: {client_adresse}", ln=True)
+                    pdf.ln(5)
 
-                total_ht = 0
-                total_ttc = 0
-                for item in st.session_state.panier:
-                    total_ht += item["Total"]
-                    total_ttc += item["Total"] * 1.19
-                    pdf.cell(50, 10, str(item["Produit"]), 1)
-                    pdf.cell(30, 10, str(item["Quantité"]), 1)
-                    pdf.cell(40, 10, f"{item['Prix unitaire']:.2f}", 1)
-                    pdf.cell(40, 10, f"{item['Total']:.2f}", 1)
-                    pdf.cell(30, 10, f"{item['Total'] * 1.19:.2f}", 1, ln=True)
+                    # Tableau produits
+                    pdf.cell(50, 10, "Produit", 1)
+                    pdf.cell(30, 10, "Quantité", 1)
+                    pdf.cell(40, 10, "Prix HT", 1)
+                    pdf.cell(40, 10, "Total HT", 1)
+                    pdf.cell(30, 10, "Total TTC", 1, ln=True)
 
-                total_tva = total_ttc - total_ht
-                pdf.cell(160, 10, "Total HT:", 0, align="R")
-                pdf.cell(30, 10, f"{total_ht:.2f}", 1, ln=True)
-                pdf.cell(160, 10, "Total TVA 19%:", 0, align="R")
-                pdf.cell(30, 10, f"{total_tva:.2f}", 1, ln=True)
-                pdf.cell(160, 10, "Total TTC:", 0, align="R")
-                pdf.cell(30, 10, f"{total_ttc:.2f}", 1, ln=True)
+                    total_ht = 0
+                    total_ttc = 0
+                    for item in st.session_state.panier:
+                        total_ht += item["Total"]
+                        total_ttc += item["Total"] * 1.19
+                        pdf.cell(50, 10, str(item["Produit"]), 1)
+                        pdf.cell(30, 10, str(item["Quantité"]), 1)
+                        pdf.cell(40, 10, f"{item['Prix unitaire']:.2f}", 1)
+                        pdf.cell(40, 10, f"{item['Total']:.2f}", 1)
+                        pdf.cell(30, 10, f"{item['Total'] * 1.19:.2f}", 1, ln=True)
 
-                # 🔹 Montant en lettres robuste
-                ttc_int = int(total_ttc)
-                ttc_centimes = int(round((total_ttc - ttc_int) * 100))
-                if ttc_centimes > 0:
-                    montant_lettres = (
-                        num2words(ttc_int, lang='fr') + " dinars et " +
-                        num2words(ttc_centimes, lang='fr') + " centimes algériens"
+                    total_tva = total_ttc - total_ht
+                    pdf.cell(160, 10, "Total HT:", 0, align="R")
+                    pdf.cell(30, 10, f"{total_ht:.2f}", 1, ln=True)
+                    pdf.cell(160, 10, "Total TVA 19%:", 0, align="R")
+                    pdf.cell(30, 10, f"{total_tva:.2f}", 1, ln=True)
+                    pdf.cell(160, 10, "Total TTC:", 0, align="R")
+                    pdf.cell(30, 10, f"{total_ttc:.2f}", 1, ln=True)
+
+                    # 🔹 Montant en lettres
+                    ttc_int = int(total_ttc)
+                    ttc_centimes = int(round((total_ttc - ttc_int) * 100))
+                    if ttc_centimes > 0:
+                        montant_lettres = (
+                            num2words(ttc_int, lang='fr') + " dinars et " +
+                            num2words(ttc_centimes, lang='fr') + " centimes algériens"
+                        )
+                    else:
+                        montant_lettres = num2words(ttc_int, lang='fr') + " dinars algériens"
+
+                    pdf.ln(10)
+                    pdf.set_font("Arial", 'I', 11)
+                    pdf.multi_cell(0, 10, f"Arrêté la présente facture à la somme de : {montant_lettres}")
+
+                    # Export PDF
+                    pdf_bytes = pdf.output(dest='S').encode('latin1')
+                    pdf_io = io.BytesIO(pdf_bytes)
+
+                    st.download_button(
+                        label="📥 Télécharger la facture",
+                        data=pdf_io,
+                        file_name=f"facture_{client_nom}.pdf",
+                        mime="application/pdf"
                     )
-                else:
-                    montant_lettres = num2words(ttc_int, lang='fr') + " dinars algériens"
-
-                pdf.ln(10)
-                pdf.set_font("Arial", 'I', 11)
-                pdf.multi_cell(0, 10, f"Arrêté la présente facture à la somme de : {montant_lettres}")
-
-                # Export PDF
-                pdf_bytes = pdf.output(dest='S').encode('latin1')
-                pdf_io = io.BytesIO(pdf_bytes)
-
-                st.download_button(
-                    label="📥 Télécharger la facture",
-                    data=pdf_io,
-                    file_name=f"facture_{client_nom}.pdf",
-                    mime="application/pdf"
-                )
 
                 st.session_state.panier = []
 
