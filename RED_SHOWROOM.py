@@ -9,20 +9,13 @@ import io
 # ---------------------------------------------------
 # ⚙️ Configuration Streamlit
 # ---------------------------------------------------
-st.set_page_config(
-    page_title="Showroom Stock & Vente",
-    layout="wide"
-)
+st.set_page_config(page_title="Showroom Stock & Vente", layout="wide")
 st.title("📊 Gestion Showroom")
 
 # ---------------------------------------------------
 # 🔹 Connexion Google Sheets
 # ---------------------------------------------------
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
-
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 creds_dict = st.secrets["google"]
 creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 client = gspread.authorize(creds)
@@ -62,9 +55,7 @@ with tabs[0]:
         produit_stock = st.selectbox("Produit", produits_dispo)
         quantite_stock = st.number_input("Quantité achetée", min_value=1, step=1)
         prix_achat = st.number_input("Prix d'achat unitaire", min_value=0.0, step=1.0)
-        submit_stock = st.form_submit_button("Ajouter au stock")
-
-        if submit_stock:
+        if st.form_submit_button("Ajouter au stock"):
             row = [str(datetime.now()), produit_stock, quantite_stock, prix_achat]
             spreadsheet.worksheet("Stock").append_row(row)
             st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
@@ -75,16 +66,12 @@ with tabs[0]:
 with tabs[1]:
     st.header("Enregistrer une vente multi-produits")
 
-    # Initialiser le panier
     if "panier" not in st.session_state:
         st.session_state.panier = []
 
     with st.form("form_vente_multi"):
-        # Choix produit et quantité
         produit_vente = st.selectbox("Produit vendu", produits_dispo)
         quantite_vente = st.number_input("Quantité vendue", min_value=1, step=1)
-
-        # Coordonnées client
         client_nom = st.text_input("Nom du client")
         client_email = st.text_input("Email du client")
         client_tel = st.text_input("Téléphone du client")
@@ -105,14 +92,12 @@ with tabs[1]:
                 "Total": total_vente
             })
 
-    # Afficher le panier
     if st.session_state.panier:
         st.subheader("Panier actuel")
         df_panier = pd.DataFrame(st.session_state.panier)
         st.dataframe(df_panier, use_container_width=True)
 
         if st.button("Enregistrer la vente"):
-            # Vérification stock
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
             vente_valide = True
@@ -126,7 +111,7 @@ with tabs[1]:
                     vente_valide = False
 
             if vente_valide:
-                # Ajouter les ventes dans Google Sheets
+                # Ajouter les ventes
                 for item in st.session_state.panier:
                     row_vente = [str(datetime.now()), client_nom, client_email, client_tel,
                                  client_rc, client_nif, client_art, client_adresse,
@@ -149,33 +134,41 @@ with tabs[1]:
                 pdf.cell(200, 10, txt="FACTURE SHOWROOM", ln=True, align="C")
                 pdf.ln(5)
 
-                # Coordonnées entreprise
                 pdf.set_font("Arial", size=12)
                 pdf.cell(200, 5, txt=f"{entreprise_nom}", ln=True)
                 pdf.cell(200, 5, txt=f"{entreprise_adresse}", ln=True)
                 pdf.cell(200, 5, txt=f"{entreprise_rc} | {entreprise_nif} | {entreprise_art}", ln=True)
                 pdf.ln(5)
 
-                # Coordonnées client
                 pdf.cell(200, 5, txt=f"Client: {client_nom}", ln=True)
                 pdf.cell(200, 5, txt=f"Email: {client_email} | Tel: {client_tel}", ln=True)
                 pdf.cell(200, 5, txt=f"RC: {client_rc} | NIF: {client_nif} | ART: {client_art} | Adresse: {client_adresse}", ln=True)
                 pdf.ln(5)
 
-                # Tableau produits
                 pdf.cell(50, 10, "Produit", 1)
                 pdf.cell(30, 10, "Quantité", 1)
                 pdf.cell(40, 10, "Prix HT", 1)
                 pdf.cell(40, 10, "Total HT", 1)
                 pdf.cell(30, 10, "Total TTC", 1, ln=True)
 
+                total_ht = 0
+                total_ttc = 0
                 for item in st.session_state.panier:
-                    total_ttc = round(item["Total"] * 1.19, 2)
+                    total_ht += item["Total"]
+                    total_ttc += item["Total"] * 1.19
                     pdf.cell(50, 10, str(item["Produit"]), 1)
                     pdf.cell(30, 10, str(item["Quantité"]), 1)
-                    pdf.cell(40, 10, str(item["Prix unitaire"]), 1)
-                    pdf.cell(40, 10, str(item["Total"]), 1)
-                    pdf.cell(30, 10, str(total_ttc), 1, ln=True)
+                    pdf.cell(40, 10, f"{item['Prix unitaire']:.2f}", 1)
+                    pdf.cell(40, 10, f"{item['Total']:.2f}", 1)
+                    pdf.cell(30, 10, f"{item['Total']*1.19:.2f}", 1, ln=True)
+
+                total_tva = total_ttc - total_ht
+                pdf.cell(160, 10, "Total HT:", 0, align="R")
+                pdf.cell(30, 10, f"{total_ht:.2f}", 1, ln=True)
+                pdf.cell(160, 10, "Total TVA 19%:", 0, align="R")
+                pdf.cell(30, 10, f"{total_tva:.2f}", 1, ln=True)
+                pdf.cell(160, 10, "Total TTC:", 0, align="R")
+                pdf.cell(30, 10, f"{total_ttc:.2f}", 1, ln=True)
 
                 pdf_bytes = pdf.output(dest='S').encode('latin1')
                 pdf_io = io.BytesIO(pdf_bytes)
@@ -187,7 +180,7 @@ with tabs[1]:
                     mime="application/pdf"
                 )
 
-                st.session_state.panier = []  # Vider le panier après enregistrement
+                st.session_state.panier = []
 
 # ---------------------------------------------------
 # Onglet 3 : État Stock
@@ -199,7 +192,7 @@ with tabs[2]:
 
     if not df_stock.empty:
         stock_reel = df_stock.groupby("Produit")['Quantité'].sum().reset_index()
-        if not df_ventes.empty:
+        if not df_ventes.empty and "Produit" in df_ventes.columns and "Quantité" in df_ventes.columns:
             ventes_group = df_ventes.groupby("Produit")['Quantité'].sum().reset_index()
             stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left", suffixes=('', '_vendu'))
             stock_reel['Quantité_vendu'] = stock_reel['Quantité_vendu'].fillna(0)
