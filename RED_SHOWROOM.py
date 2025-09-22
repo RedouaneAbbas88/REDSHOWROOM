@@ -28,21 +28,28 @@ client = gspread.authorize(creds)
 SPREADSHEET_ID = "1r4xnyKDaY6jzYGLUORKHlPeGKMCCLkkIx_XvSkIobhc"
 spreadsheet = client.open_by_key(SPREADSHEET_ID)
 
-# Feuilles
-sheet_produits = spreadsheet.worksheet("Produits")
-sheet_stock = spreadsheet.worksheet("Stock")
-sheet_ventes = spreadsheet.worksheet("Ventes")
-sheet_clients = spreadsheet.worksheet("Clients")  # Nouvelle feuille clients
+# ---------------------------------------------------
+# 🔹 Fonction pour charger une feuille en cache
+# ---------------------------------------------------
+@st.cache_data(ttl=300)
+def load_sheet(sheet_name):
+    try:
+        sheet = spreadsheet.worksheet(sheet_name)
+        data = sheet.get_all_records()
+        return pd.DataFrame(data)
+    except Exception as e:
+        st.error(f"Erreur lors du chargement de la feuille '{sheet_name}': {e}")
+        return pd.DataFrame()
 
 # ---------------------------------------------------
 # 🔹 Charger les données
 # ---------------------------------------------------
-df_produits = pd.DataFrame(sheet_produits.get_all_records())
-df_stock = pd.DataFrame(sheet_stock.get_all_records())
-df_ventes = pd.DataFrame(sheet_ventes.get_all_records())
-df_clients = pd.DataFrame(sheet_clients.get_all_records())
+df_produits = load_sheet("Produits")
+df_stock = load_sheet("Stock")
+df_ventes = load_sheet("Ventes")
+df_clients = load_sheet("Clients")
 
-produits_dispo = df_produits['Produit'].tolist()
+produits_dispo = df_produits['Produit'].tolist() if not df_produits.empty else []
 
 # ---------------------------------------------------
 # 🔹 Formulaire Ajout Stock
@@ -57,14 +64,14 @@ with st.form("form_stock"):
 
     if submit_stock:
         row = [str(datetime.now()), produit_stock, quantite_stock, prix_achat]
-        sheet_stock.append_row(row)
+        spreadsheet.worksheet("Stock").append_row(row)
         st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
 
 # ---------------------------------------------------
 # 🔹 Formulaire Vente
 # ---------------------------------------------------
 st.header("💰 Ventes")
-vente_enregistree = False  # flag pour bouton téléchargement
+vente_enregistree = False
 
 with st.form("form_vente"):
     st.subheader("Enregistrer une vente")
@@ -82,23 +89,25 @@ with st.form("form_vente"):
 
     if submit_vente:
         # Vérifier stock disponible
-        df_stock = pd.DataFrame(sheet_stock.get_all_records())
-        df_ventes = pd.DataFrame(sheet_ventes.get_all_records())
-        stock_dispo = df_stock[df_stock['Produit'] == produit_vente]['Quantité'].sum() - \
-                      df_ventes[df_ventes['Produit'] == produit_vente]['Quantité'].sum() if not df_ventes.empty else \
-                      df_stock[df_stock['Produit'] == produit_vente]['Quantité'].sum()
+        df_stock = load_sheet("Stock")
+        df_ventes = load_sheet("Ventes")
 
-        if quantite_vente > stock_dispo:
-            st.error(f"Stock insuffisant ! Stock disponible : {stock_dispo}")
+        stock_dispo = df_stock[df_stock['Produit'] == produit_vente]['Quantité'].sum()
+        ventes_sum = df_ventes[df_ventes['Produit'] == produit_vente]['Quantité'].sum() if not df_ventes.empty else 0
+        stock_reel = stock_dispo - ventes_sum
+
+        if quantite_vente > stock_reel:
+            st.error(f"Stock insuffisant ! Stock disponible : {stock_reel}")
         else:
             # Ajouter la vente
             row_vente = [str(datetime.now()), client_nom, produit_vente, quantite_vente, prix_unitaire, total_vente]
-            sheet_ventes.append_row(row_vente)
+            spreadsheet.worksheet("Ventes").append_row(row_vente)
 
-            # Ajouter client dans la feuille Clients si nouveau
+            # Ajouter client si nouveau
+            df_clients = load_sheet("Clients")
             if client_nom not in df_clients['Nom'].tolist():
                 row_client = [client_nom, client_email, client_tel]
-                sheet_clients.append_row(row_client)
+                spreadsheet.worksheet("Clients").append_row(row_client)
 
             st.success(f"Vente enregistrée pour {client_nom} : {quantite_vente} {produit_vente} ({total_vente})")
             vente_enregistree = True
@@ -122,31 +131,31 @@ if vente_enregistree:
     pdf.output(pdf_output)
     pdf_output.seek(0)
 
-    # Bouton téléchargement en dehors du formulaire
     st.download_button("📥 Télécharger la facture", pdf_output, file_name=f"facture_{client_nom}.pdf")
 
 # ---------------------------------------------------
 # 🔹 État du stock
 # ---------------------------------------------------
 st.header("📦 État du Stock")
-df_stock = pd.DataFrame(sheet_stock.get_all_records())
-df_ventes = pd.DataFrame(sheet_ventes.get_all_records())
+df_stock = load_sheet("Stock")
+df_ventes = load_sheet("Ventes")
 
-stock_reel = df_stock.groupby("Produit")['Quantité'].sum().reset_index()
-if not df_ventes.empty:
-    ventes_group = df_ventes.groupby("Produit")['Quantité'].sum().reset_index()
-    stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left")
-    stock_reel['Quantité_y'] = stock_reel['Quantité_y'].fillna(0)
-    stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_y']
-else:
-    stock_reel['Stock restant'] = stock_reel['Quantité']
-
-st.dataframe(stock_reel[['Produit', 'Stock restant']], use_container_width=True)
+if not df_stock.empty:
+    stock_reel = df_stock.groupby("Produit")['Quantité'].sum().reset_index()
+    if not df_ventes.empty:
+        ventes_group = df_ventes.groupby("Produit")['Quantité'].sum().reset_index()
+        stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left")
+        stock_reel['Quantité_y'] = stock_reel['Quantité_y'].fillna(0)
+        stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_y']
+    else:
+        stock_reel['Stock restant'] = stock_reel['Quantité']
+    st.dataframe(stock_reel[['Produit', 'Stock restant']], use_container_width=True)
 
 # ---------------------------------------------------
 # 🔹 Historique des ventes
 # ---------------------------------------------------
 st.header("📄 Historique des Ventes")
+df_ventes = load_sheet("Ventes")
 if not df_ventes.empty:
     st.dataframe(df_ventes, use_container_width=True)
 else:
