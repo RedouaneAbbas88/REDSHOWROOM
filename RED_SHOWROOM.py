@@ -83,12 +83,13 @@ with tabs[1]:
         client_art = st.text_input("ART du client")
         client_adresse = st.text_input("Adresse du client")
 
+        # Case à cocher pour générer facture
+        generer_facture = st.checkbox("Générer une facture PDF")
+
         # Prix produit
         prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0]) if not df_produits.empty else 0.0
         total_vente = prix_unitaire * quantite_vente
         st.write(f"Prix unitaire : {prix_unitaire} | Total HT : {total_vente:.2f} | Total TTC : {round(total_vente*1.19,2)}")
-
-        generer_facture = st.checkbox("Générer une facture PDF")
 
         if st.form_submit_button("Ajouter au panier"):
             st.session_state.panier.append({
@@ -103,7 +104,7 @@ with tabs[1]:
         df_panier = pd.DataFrame(st.session_state.panier)
         st.dataframe(df_panier, use_container_width=True)
 
-        if st.button("Enregistrer la vente"):
+        if st.button("Enregistrer la vente", key="enregistrer_vente"):
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
             vente_valide = True
@@ -118,42 +119,46 @@ with tabs[1]:
                     vente_valide = False
 
             if vente_valide:
-                # Coordonnées entreprise fixes
+                # Générer numéro de facture si demandé
+                if generer_facture:
+                    factures_existantes = df_ventes[df_ventes["Numéro de facture"].notnull()] if not df_ventes.empty else pd.DataFrame()
+                    if not factures_existantes.empty:
+                        numeros_valides = factures_existantes["Numéro de facture"].str.split("/").str[0]
+                        numeros_valides = numeros_valides[numeros_valides.str.isnumeric()].astype(int)
+                        dernier_num = numeros_valides.max() if not numeros_valides.empty else 0
+                    else:
+                        dernier_num = 0
+                    prochain_num = f"{dernier_num + 1:03d}/2025"
+                else:
+                    prochain_num = ""
+
+                # Infos entreprise
                 entreprise_nom = "NORTH AFRICA ELECTRONICS"
                 entreprise_adresse = "123 Rue Principale, Alger"
                 entreprise_rc = "RC: 16/00-1052043 B23"
                 entreprise_nif = "NIF: 002316105204354"
                 entreprise_art = "ART: 002316300298344"
 
-                # Numéro facture
-                annee = datetime.now().year
-                factures_existantes = df_ventes[df_ventes["Numéro de facture"].notnull()] if not df_ventes.empty else pd.DataFrame()
-                if not factures_existantes.empty:
-                    dernier_num = factures_existantes["Numéro de facture"].str.split("/").str[0].astype(int).max()
-                else:
-                    dernier_num = 0
-                nouveau_num = f"{dernier_num + 1:03d}/{annee}"
-
-                # Ajouter ventes dans Google Sheet
+                # Ajouter ventes à Google Sheet
                 for item in st.session_state.panier:
                     row_vente = [
                         str(datetime.now()), client_nom, client_email, client_tel,
                         client_rc, client_nif, client_art, client_adresse,
                         item["Produit"], item["Quantité"], item["Prix unitaire"], item["Total"],
-                        item["Total"] * 1.19,
+                        round(item["Total"] * 1.19, 2),
                         entreprise_rc, entreprise_nif, entreprise_art, entreprise_adresse,
-                        nouveau_num
+                        prochain_num
                     ]
                     spreadsheet.worksheet("Ventes").append_row(row_vente)
 
                 st.success(f"Vente enregistrée pour {client_nom} avec {len(st.session_state.panier)} produits.")
 
-                # Génération PDF si demandé
+                # Génération PDF
                 if generer_facture:
                     pdf = FPDF()
                     pdf.add_page()
                     pdf.set_font("Arial", 'B', 14)
-                    pdf.cell(200, 10, txt=f"Facture Num : {nouveau_num}", ln=True, align="C")
+                    pdf.cell(200, 10, txt=f"Facture Num : {prochain_num}", ln=True, align="C")
                     pdf.ln(5)
 
                     pdf.set_font("Arial", size=12)
@@ -167,7 +172,6 @@ with tabs[1]:
                     pdf.cell(200, 5, txt=f"RC: {client_rc} | NIF: {client_nif} | ART: {client_art} | Adresse: {client_adresse}", ln=True)
                     pdf.ln(5)
 
-                    # Tableau produits
                     pdf.cell(50, 10, "Produit", 1)
                     pdf.cell(30, 10, "Quantité", 1)
                     pdf.cell(40, 10, "Prix HT", 1)
@@ -183,7 +187,7 @@ with tabs[1]:
                         pdf.cell(30, 10, str(item["Quantité"]), 1)
                         pdf.cell(40, 10, f"{item['Prix unitaire']:.2f}", 1)
                         pdf.cell(40, 10, f"{item['Total']:.2f}", 1)
-                        pdf.cell(30, 10, f"{item['Total']*1.19:.2f}", 1, ln=True)
+                        pdf.cell(30, 10, f"{item['Total'] * 1.19:.2f}", 1, ln=True)
 
                     total_tva = total_ttc - total_ht
                     pdf.cell(160, 10, "Total HT:", 0, align="R")
@@ -215,10 +219,11 @@ with tabs[1]:
                     st.download_button(
                         label="📥 Télécharger la facture",
                         data=pdf_io,
-                        file_name=f"facture_{nouveau_num}_{client_nom}.pdf",
+                        file_name=f"facture_{client_nom}_{prochain_num}.pdf",
                         mime="application/pdf"
                     )
 
+                # Vider le panier après enregistrement
                 st.session_state.panier = []
 
 # ---------------------------------------------------
