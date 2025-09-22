@@ -33,7 +33,7 @@ spreadsheet = client.open_by_key(SPREADSHEET_ID)
 # ---------------------------------------------------
 # 🔹 Fonction pour charger une feuille
 # ---------------------------------------------------
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=10)  # Rafraîchit les données toutes les 10 secondes
 def load_sheet(sheet_name):
     try:
         sheet = spreadsheet.worksheet(sheet_name)
@@ -68,12 +68,12 @@ with tabs[0]:
             row = [str(datetime.now()), produit_stock, quantite_stock, prix_achat]
             spreadsheet.worksheet("Stock").append_row(row)
             st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
-            st.experimental_rerun()  # Mise à jour immédiate
 
 # -------------------- Onglet 2 : Enregistrer Vente --------------------
 with tabs[1]:
     st.header("Enregistrer une vente")
     vente_enregistree = False
+
     with st.form("form_vente"):
         produit_vente = st.selectbox("Produit vendu", produits_dispo)
         quantite_vente = st.number_input("Quantité vendue", min_value=1, step=1)
@@ -133,11 +133,14 @@ with tabs[1]:
             file_name=f"facture_{client_nom}.pdf",
             mime="application/pdf"
         )
-        st.experimental_rerun()
 
 # -------------------- Onglet 3 : État Stock --------------------
 with tabs[2]:
     st.header("État du stock")
+    if st.button("🔄 Actualiser stock"):
+        df_stock = load_sheet("Stock")
+        df_ventes = load_sheet("Ventes")
+
     df_stock = load_sheet("Stock")
     df_ventes = load_sheet("Ventes")
 
@@ -158,6 +161,9 @@ with tabs[2]:
 # -------------------- Onglet 4 : Historique Ventes --------------------
 with tabs[3]:
     st.header("Historique des ventes")
+    if st.button("🔄 Actualiser ventes"):
+        df_ventes = load_sheet("Ventes")
+
     df_ventes = load_sheet("Ventes")
     if not df_ventes.empty:
         st.dataframe(df_ventes, use_container_width=True)
