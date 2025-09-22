@@ -102,12 +102,13 @@ with tabs[1]:
         df_panier = pd.DataFrame(st.session_state.panier)
         st.dataframe(df_panier, use_container_width=True)
 
-        # Option pour générer facture PDF
-        generer_facture = st.checkbox("✅ Générer une facture PDF")
+        # Option pour générer facture
+        generer_facture = st.checkbox("Générer une facture PDF pour ce client ?")
 
         if st.button("Enregistrer la vente"):
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
+            ws_ventes = spreadsheet.worksheet("Ventes")
             vente_valide = True
 
             # Vérif stock
@@ -120,33 +121,44 @@ with tabs[1]:
                     vente_valide = False
 
             if vente_valide:
-                # Ajouter ventes
+                # Déterminer le prochain numéro de facture si nécessaire
+                if generer_facture:
+                    if "Numéro de facture" in df_ventes.columns:
+                        factures_existantes = df_ventes[df_ventes["Numéro de facture"].notnull()]
+                        if not factures_existantes.empty:
+                            dernier_num = factures_existantes["Numéro de facture"].str.split("/").str[0].astype(int).max()
+                        else:
+                            dernier_num = 0
+                    else:
+                        # Ajouter la colonne si elle n'existe pas
+                        ws_ventes.update_cell(1, len(df_ventes.columns)+1, "Numéro de facture")
+                        dernier_num = 0
+                    nouveau_num = str(dernier_num + 1).zfill(3) + f"/{datetime.now().year}"
+                else:
+                    nouveau_num = ""  # Pas de facture
+
+                # Ajouter ventes dans Google Sheets
                 for item in st.session_state.panier:
                     row_vente = [str(datetime.now()), client_nom, client_email, client_tel,
                                  client_rc, client_nif, client_art, client_adresse,
-                                 item["Produit"], item["Quantité"], item["Prix unitaire"], item["Total"]]
-                    spreadsheet.worksheet("Ventes").append_row(row_vente)
+                                 item["Produit"], item["Quantité"], item["Prix unitaire"], item["Total"],
+                                 nouveau_num]
+                    ws_ventes.append_row(row_vente)
 
                 st.success(f"Vente enregistrée pour {client_nom} avec {len(st.session_state.panier)} produits.")
 
+                # Génération PDF si demandé
                 if generer_facture:
-                    # Infos entreprise
                     entreprise_nom = "NORTH AFRICA ELECTRONICS"
                     entreprise_adresse = "123 Rue Principale, Alger"
                     entreprise_rc = "RC: 16/00-1052043 B23"
                     entreprise_nif = "NIF: 002316105204354"
                     entreprise_art = "ART: 002316300298344"
 
-                    # Numéro de facture
-                    df_factures = load_sheet("Ventes")
-                    num_facture = len(df_factures) + 1
-                    num_facture_str = str(num_facture).zfill(3) + f"/{datetime.now().year}"
-
-                    # Création PDF facture
                     pdf = FPDF()
                     pdf.add_page()
                     pdf.set_font("Arial", 'B', 14)
-                    pdf.cell(200, 10, txt=f"FACTURE Num : {num_facture_str}", ln=True, align="C")
+                    pdf.cell(200, 10, txt=f"FACTURE {nouveau_num}", ln=True, align="C")
                     pdf.ln(5)
 
                     pdf.set_font("Arial", size=12)
@@ -201,14 +213,14 @@ with tabs[1]:
                     pdf.set_font("Arial", 'I', 11)
                     pdf.multi_cell(0, 10, f"Arrêté la présente facture à la somme de : {montant_lettres}")
 
-                    # Export PDF
+                    # Export PDF pour téléchargement direct
                     pdf_bytes = pdf.output(dest='S').encode('latin1')
                     pdf_io = io.BytesIO(pdf_bytes)
 
                     st.download_button(
-                        label="📥 Télécharger la facture",
+                        label="📥 Télécharger la facture PDF",
                         data=pdf_io,
-                        file_name=f"facture_{num_facture_str}_{client_nom}.pdf",
+                        file_name=f"facture_{client_nom}_{nouveau_num}.pdf",
                         mime="application/pdf"
                     )
 
