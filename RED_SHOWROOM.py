@@ -53,7 +53,9 @@ produits_dispo = df_produits['Produit'].tolist() if not df_produits.empty else [
 # ---------------------------------------------------
 tabs = st.tabs(["🛒 Ajouter Stock", "💰 Enregistrer Vente", "📦 État Stock", "📄 Historique Ventes"])
 
-# -------------------- Onglet 1 : Ajouter Stock --------------------
+# ---------------------------------------------------
+# Onglet 1 : Ajouter Stock
+# ---------------------------------------------------
 with tabs[0]:
     st.header("Ajouter du stock")
     with st.form("form_stock"):
@@ -67,7 +69,9 @@ with tabs[0]:
             spreadsheet.worksheet("Stock").append_row(row)
             st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
 
-# -------------------- Onglet 2 : Enregistrer Vente Multi-produits --------------------
+# ---------------------------------------------------
+# Onglet 2 : Enregistrer Vente Multi-produits
+# ---------------------------------------------------
 with tabs[1]:
     st.header("Enregistrer une vente multi-produits")
 
@@ -76,15 +80,22 @@ with tabs[1]:
         st.session_state.panier = []
 
     with st.form("form_vente_multi"):
+        # Choix produit et quantité
         produit_vente = st.selectbox("Produit vendu", produits_dispo)
         quantite_vente = st.number_input("Quantité vendue", min_value=1, step=1)
+
+        # Coordonnées client
         client_nom = st.text_input("Nom du client")
         client_email = st.text_input("Email du client")
         client_tel = st.text_input("Téléphone du client")
+        client_rc = st.text_input("RC du client")
+        client_nif = st.text_input("NIF du client")
+        client_art = st.text_input("ART du client")
+        client_adresse = st.text_input("Adresse du client")
 
         prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0]) if not df_produits.empty else 0.0
         total_vente = prix_unitaire * quantite_vente
-        st.write(f"Prix unitaire : {prix_unitaire} | Total : {total_vente}")
+        st.write(f"Prix unitaire : {prix_unitaire} | Total HT : {total_vente} | Total TTC : {round(total_vente*1.19,2)}")
 
         if st.form_submit_button("Ajouter au panier"):
             st.session_state.panier.append({
@@ -101,7 +112,7 @@ with tabs[1]:
         st.dataframe(df_panier, use_container_width=True)
 
         if st.button("Enregistrer la vente"):
-            # Vérification stock pour chaque produit
+            # Vérification stock
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
             vente_valide = True
@@ -115,35 +126,23 @@ with tabs[1]:
                     vente_valide = False
 
             if vente_valide:
-                # Ajouter les ventes
+                # Ajouter les ventes dans Google Sheets
                 for item in st.session_state.panier:
                     row_vente = [str(datetime.now()), client_nom, client_email, client_tel,
+                                 client_rc, client_nif, client_art, client_adresse,
                                  item["Produit"], item["Quantité"], item["Prix unitaire"], item["Total"]]
                     spreadsheet.worksheet("Ventes").append_row(row_vente)
 
                 st.success(f"Vente enregistrée pour {client_nom} avec {len(st.session_state.panier)} produits.")
 
-                # Génération PDF simple
-                pdf = FPDF()
-                pdf.add_page()
-                pdf.set_font("Arial", 'B', 14)
-                pdf.cell(200, 10, txt="FACTURE SHOWROOM", ln=True, align="C")
-                pdf.ln(5)
-
-                # Coordonnées fixes de l'entreprise
-                entreprise_nom = "NORTH AFRICA"
+                # Coordonnées entreprise fixes
+                entreprise_nom = "ElectRoyal"
                 entreprise_adresse = "123 Rue Principale, Alger"
                 entreprise_rc = "RC: 123456"
                 entreprise_nif = "NIF: 654321"
                 entreprise_art = "ART: 987654"
 
-                # Coordonnées client
-                pdf.set_font("Arial", size=12)
-                pdf.cell(200, 5, txt=f"Client: {client_nom}", ln=True)
-                pdf.cell(200, 5, txt=f"Email: {client_email} | Tel: {client_tel}", ln=True)
-                pdf.ln(5)
-
-                # Tableau produits
+                # Génération PDF
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Arial", 'B', 14)
@@ -160,9 +159,7 @@ with tabs[1]:
                 # Coordonnées client
                 pdf.cell(200, 5, txt=f"Client: {client_nom}", ln=True)
                 pdf.cell(200, 5, txt=f"Email: {client_email} | Tel: {client_tel}", ln=True)
-                pdf.cell(200, 5,
-                         txt=f"RC: {client_rc} | NIF: {client_nif} | ART: {client_art} | Adresse: {client_adresse}",
-                         ln=True)
+                pdf.cell(200, 5, txt=f"RC: {client_rc} | NIF: {client_nif} | ART: {client_art} | Adresse: {client_adresse}", ln=True)
                 pdf.ln(5)
 
                 # Tableau produits
@@ -173,14 +170,28 @@ with tabs[1]:
                 pdf.cell(30, 10, "Total TTC", 1, ln=True)
 
                 for item in st.session_state.panier:
-                    total_ttc = round(item["Total"] * 1.19, 2)  # Calcul TTC
+                    total_ttc = round(item["Total"] * 1.19, 2)
                     pdf.cell(50, 10, str(item["Produit"]), 1)
                     pdf.cell(30, 10, str(item["Quantité"]), 1)
                     pdf.cell(40, 10, str(item["Prix unitaire"]), 1)
                     pdf.cell(40, 10, str(item["Total"]), 1)
                     pdf.cell(30, 10, str(total_ttc), 1, ln=True)
 
-# -------------------- Onglet 3 : État Stock --------------------
+                pdf_bytes = pdf.output(dest='S').encode('latin1')
+                pdf_io = io.BytesIO(pdf_bytes)
+
+                st.download_button(
+                    label="📥 Télécharger la facture",
+                    data=pdf_io,
+                    file_name=f"facture_{client_nom}.pdf",
+                    mime="application/pdf"
+                )
+
+                st.session_state.panier = []  # Vider le panier après enregistrement
+
+# ---------------------------------------------------
+# Onglet 3 : État Stock
+# ---------------------------------------------------
 with tabs[2]:
     st.header("État du stock")
     df_stock = load_sheet("Stock")
@@ -200,7 +211,9 @@ with tabs[2]:
     else:
         st.write("Aucun stock enregistré.")
 
-# -------------------- Onglet 4 : Historique Ventes --------------------
+# ---------------------------------------------------
+# Onglet 4 : Historique Ventes
+# ---------------------------------------------------
 with tabs[3]:
     st.header("Historique des ventes")
     try:
