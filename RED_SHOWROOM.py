@@ -70,6 +70,8 @@ with tabs[1]:
     if "panier" not in st.session_state:
         st.session_state.panier = []
 
+    st.session_state.gen_facture = st.checkbox("Générer une facture PDF")
+
     with st.form("form_vente_multi"):
         produit_vente = st.selectbox("Produit vendu", produits_dispo)
         quantite_vente = st.number_input("Quantité vendue", min_value=1, step=1)
@@ -102,13 +104,12 @@ with tabs[1]:
         df_panier = pd.DataFrame(st.session_state.panier)
         st.dataframe(df_panier, use_container_width=True)
 
-        st.checkbox("Générer une facture PDF", key="gen_facture")
         if st.button("Enregistrer la vente"):
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
             vente_valide = True
 
-            # Vérif stock
+            # Vérification stock
             for item in st.session_state.panier:
                 stock_dispo = df_stock[df_stock['Produit'] == item["Produit"]]['Quantité'].sum()
                 ventes_sum = df_ventes[df_ventes['Produit'] == item["Produit"]]['Quantité'].sum() if not df_ventes.empty else 0
@@ -118,42 +119,46 @@ with tabs[1]:
                     vente_valide = False
 
             if vente_valide:
-                # Numéro de facture automatique
-                factures_existantes = df_ventes if "Numéro de facture" in df_ventes.columns else pd.DataFrame(columns=["Numéro de facture"])
-                factures_valides = factures_existantes["Numéro de facture"].dropna()
+                # ---------------------------------------------------
+                # 🔹 Numéro de facture automatique
+                # ---------------------------------------------------
+                sheet_ventes = spreadsheet.worksheet("Ventes")
+                header = sheet_ventes.row_values(1)
+                if "Numéro de facture" not in header:
+                    sheet_ventes.update_cell(1, len(header)+1, "Numéro de facture")
+
+                factures_existantes = load_sheet("Ventes")
+                factures_valides = factures_existantes["Numéro de facture"].dropna() if "Numéro de facture" in factures_existantes.columns else pd.Series(dtype=str)
                 factures_valides = factures_valides[factures_valides.str.contains(r"^\d{3}/\d{4}$")]
-                if not factures_valides.empty:
-                    dernier_num = factures_valides.str.split("/").str[0].astype(int).max()
-                else:
-                    dernier_num = 0
+                dernier_num = int(factures_valides.str.split("/").str[0].max()) if not factures_valides.empty else 0
                 nouveau_num = f"{dernier_num + 1:03d}/{datetime.now().year}"
 
-                # Ajouter ventes
+                # Ajouter ventes avec ou sans facture
                 for item in st.session_state.panier:
-                    row_vente = [str(datetime.now()), client_nom, client_email, client_tel,
-                                 client_rc, client_nif, client_art, client_adresse,
-                                 item["Produit"], item["Quantité"], item["Prix unitaire"], item["Total"]]
-                    if st.session_state.gen_facture:
-                        row_vente.append(nouveau_num)
-                    else:
-                        row_vente.append("")
-                    spreadsheet.worksheet("Ventes").append_row(row_vente)
+                    row_vente = [
+                        str(datetime.now()), client_nom, client_email, client_tel,
+                        client_rc, client_nif, client_art, client_adresse,
+                        item["Produit"], item["Quantité"], item["Prix unitaire"], item["Total"]
+                    ]
+                    row_vente.append(nouveau_num if st.session_state.gen_facture else "")
+                    sheet_ventes.append_row(row_vente)
 
                 st.success(f"Vente enregistrée pour {client_nom} avec {len(st.session_state.panier)} produits.")
 
+                # ---------------------------------------------------
+                # 🔹 Génération PDF facture si cochée
+                # ---------------------------------------------------
                 if st.session_state.gen_facture:
-                    # Infos entreprise
                     entreprise_nom = "NORTH AFRICA ELECTRONICS"
                     entreprise_adresse = "123 Rue Principale, Alger"
                     entreprise_rc = "RC: 16/00-1052043 B23"
                     entreprise_nif = "NIF: 002316105204354"
                     entreprise_art = "ART: 002316300298344"
 
-                    # Création PDF facture
                     pdf = FPDF()
                     pdf.add_page()
                     pdf.set_font("Arial", 'B', 14)
-                    pdf.cell(200, 10, txt="FACTURE", ln=True, align="C")
+                    pdf.cell(200, 10, txt=f"FACTURE Num : {nouveau_num}", ln=True, align="C")
                     pdf.ln(5)
 
                     pdf.set_font("Arial", size=12)
@@ -165,10 +170,8 @@ with tabs[1]:
                     pdf.cell(200, 5, txt=f"Client: {client_nom}", ln=True)
                     pdf.cell(200, 5, txt=f"Email: {client_email} | Tel: {client_tel}", ln=True)
                     pdf.cell(200, 5, txt=f"RC: {client_rc} | NIF: {client_nif} | ART: {client_art} | Adresse: {client_adresse}", ln=True)
-                    pdf.cell(200, 5, txt=f"Facture Num : {nouveau_num}", ln=True)
                     pdf.ln(5)
 
-                    # Tableau produits
                     pdf.cell(50, 10, "Produit", 1)
                     pdf.cell(30, 10, "Quantité", 1)
                     pdf.cell(40, 10, "Prix HT", 1)
@@ -194,7 +197,6 @@ with tabs[1]:
                     pdf.cell(160, 10, "Total TTC:", 0, align="R")
                     pdf.cell(30, 10, f"{total_ttc:.2f}", 1, ln=True)
 
-                    # Montant en lettres
                     ttc_int = int(total_ttc)
                     ttc_centimes = int(round((total_ttc - ttc_int) * 100))
                     if ttc_centimes > 0:
@@ -209,14 +211,13 @@ with tabs[1]:
                     pdf.set_font("Arial", 'I', 11)
                     pdf.multi_cell(0, 10, f"Arrêté la présente facture à la somme de : {montant_lettres}")
 
-                    # Export PDF
+                    # Téléchargement PDF
                     pdf_bytes = pdf.output(dest='S').encode('latin1')
                     pdf_io = io.BytesIO(pdf_bytes)
-
                     st.download_button(
                         label="📥 Télécharger la facture",
                         data=pdf_io,
-                        file_name=f"facture_{client_nom}_{nouveau_num}.pdf",
+                        file_name=f"facture_{nouveau_num}_{client_nom}.pdf",
                         mime="application/pdf"
                     )
 
