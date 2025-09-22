@@ -130,6 +130,13 @@ with tabs[1]:
                 pdf.cell(200, 10, txt="FACTURE SHOWROOM", ln=True, align="C")
                 pdf.ln(5)
 
+                # Coordonnées fixes de l'entreprise
+                entreprise_nom = "NORTH AFRICA"
+                entreprise_adresse = "123 Rue Principale, Alger"
+                entreprise_rc = "RC: 123456"
+                entreprise_nif = "NIF: 654321"
+                entreprise_art = "ART: 987654"
+
                 # Coordonnées client
                 pdf.set_font("Arial", size=12)
                 pdf.cell(200, 5, txt=f"Client: {client_nom}", ln=True)
@@ -137,28 +144,41 @@ with tabs[1]:
                 pdf.ln(5)
 
                 # Tableau produits
-                pdf.cell(60, 10, "Produit", 1)
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", 'B', 14)
+                pdf.cell(200, 10, txt="FACTURE SHOWROOM", ln=True, align="C")
+                pdf.ln(5)
+
+                # Coordonnées entreprise
+                pdf.set_font("Arial", size=12)
+                pdf.cell(200, 5, txt=f"{entreprise_nom}", ln=True)
+                pdf.cell(200, 5, txt=f"{entreprise_adresse}", ln=True)
+                pdf.cell(200, 5, txt=f"{entreprise_rc} | {entreprise_nif} | {entreprise_art}", ln=True)
+                pdf.ln(5)
+
+                # Coordonnées client
+                pdf.cell(200, 5, txt=f"Client: {client_nom}", ln=True)
+                pdf.cell(200, 5, txt=f"Email: {client_email} | Tel: {client_tel}", ln=True)
+                pdf.cell(200, 5,
+                         txt=f"RC: {client_rc} | NIF: {client_nif} | ART: {client_art} | Adresse: {client_adresse}",
+                         ln=True)
+                pdf.ln(5)
+
+                # Tableau produits
+                pdf.cell(50, 10, "Produit", 1)
                 pdf.cell(30, 10, "Quantité", 1)
-                pdf.cell(50, 10, "Prix Unitaire", 1)
-                pdf.cell(50, 10, "Total", 1, ln=True)
+                pdf.cell(40, 10, "Prix HT", 1)
+                pdf.cell(40, 10, "Total HT", 1)
+                pdf.cell(30, 10, "Total TTC", 1, ln=True)
 
                 for item in st.session_state.panier:
-                    pdf.cell(60, 10, str(item["Produit"]), 1)
+                    total_ttc = round(item["Total"] * 1.19, 2)  # Calcul TTC
+                    pdf.cell(50, 10, str(item["Produit"]), 1)
                     pdf.cell(30, 10, str(item["Quantité"]), 1)
-                    pdf.cell(50, 10, str(item["Prix unitaire"]), 1)
-                    pdf.cell(50, 10, str(item["Total"]), 1, ln=True)
-
-                pdf_bytes = pdf.output(dest='S').encode('latin1')
-                pdf_io = io.BytesIO(pdf_bytes)
-
-                st.download_button(
-                    label="📥 Télécharger la facture",
-                    data=pdf_io,
-                    file_name=f"facture_{client_nom}.pdf",
-                    mime="application/pdf"
-                )
-
-                st.session_state.panier = []  # Vider le panier après enregistrement
+                    pdf.cell(40, 10, str(item["Prix unitaire"]), 1)
+                    pdf.cell(40, 10, str(item["Total"]), 1)
+                    pdf.cell(30, 10, str(total_ttc), 1, ln=True)
 
 # -------------------- Onglet 3 : État Stock --------------------
 with tabs[2]:
