@@ -43,9 +43,13 @@ df_produits = load_sheet("Produits")
 produits_dispo = df_produits['Produit'].tolist() if not df_produits.empty else []
 
 # ---------------------------------------------------
-# 🔹 Onglets
+# 🔹 Gestion onglet actif
 # ---------------------------------------------------
-tabs = st.tabs(["🛒 Ajouter Stock", "💰 Enregistrer Vente", "📦 État Stock", "📄 Historique Ventes"])
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = 0  # par défaut premier onglet
+
+tab_names = ["🛒 Ajouter Stock", "💰 Enregistrer Vente", "📦 État Stock", "📄 Historique Ventes"]
+tabs = st.tabs(tab_names)
 
 # ---------------------------------------------------
 # Onglet 1 : Ajouter Stock
@@ -60,6 +64,7 @@ with tabs[0]:
             row = [str(datetime.now()), produit_stock, quantite_stock, prix_achat]
             spreadsheet.worksheet("Stock").append_row(row)
             st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
+            st.session_state.active_tab = 0  # rester dans cet onglet
 
 # ---------------------------------------------------
 # Onglet 2 : Enregistrer Vente Multi-produits
@@ -98,6 +103,7 @@ with tabs[1]:
                 "Prix unitaire": prix_unitaire,
                 "Total": total_vente
             })
+            st.session_state.active_tab = 1  # rester onglet ventes
 
     # ---------------------------------------------------
     # Affichage du panier modifiable
@@ -124,8 +130,8 @@ with tabs[1]:
             with col3:
                 if st.button("❌ Supprimer", key=f"del_{i}"):
                     indices_a_supprimer.append(i)
+                    st.session_state.active_tab = 1
 
-        # Supprimer les éléments après la boucle
         for index in sorted(indices_a_supprimer, reverse=True):
             st.session_state.panier.pop(index)
 
@@ -133,6 +139,7 @@ with tabs[1]:
 
         # Bouton pour enregistrer la vente
         if st.button("Enregistrer la vente", key="enregistrer_vente"):
+            st.session_state.active_tab = 1
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
             vente_valide = True
@@ -225,7 +232,6 @@ with tabs[1]:
                     pdf.cell(160, 10, "Total TTC:", 0, align="R")
                     pdf.cell(30, 10, f"{total_ttc:.2f}", 1, ln=True)
 
-                    # Montant en lettres
                     ttc_int = int(total_ttc)
                     ttc_centimes = int(round((total_ttc - ttc_int) * 100))
                     if ttc_centimes > 0:
@@ -240,7 +246,6 @@ with tabs[1]:
                     pdf.set_font("Arial", 'I', 11)
                     pdf.multi_cell(0, 10, f"Arrêté la présente facture à la somme de : {montant_lettres}")
 
-                    # Export PDF pour téléchargement
                     pdf_bytes = pdf.output(dest='S').encode('latin1')
                     pdf_io = io.BytesIO(pdf_bytes)
 
@@ -251,7 +256,6 @@ with tabs[1]:
                         mime="application/pdf"
                     )
 
-                # Vider le panier après enregistrement
                 st.session_state.panier = []
 
 # ---------------------------------------------------
