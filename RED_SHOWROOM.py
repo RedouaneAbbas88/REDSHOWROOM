@@ -43,18 +43,24 @@ df_produits = load_sheet("Produits")
 produits_dispo = df_produits['Produit'].tolist() if not df_produits.empty else []
 
 # ---------------------------------------------------
-# 🔹 Gestion onglet actif
+# 🔹 Gestion manuelle des onglets (plus stable que st.tabs)
 # ---------------------------------------------------
 if "active_tab" not in st.session_state:
-    st.session_state.active_tab = 0  # par défaut premier onglet
+    st.session_state.active_tab = "🛒 Ajouter Stock"
 
 tab_names = ["🛒 Ajouter Stock", "💰 Enregistrer Vente", "📦 État Stock", "📄 Historique Ventes"]
-tabs = st.tabs(tab_names)
+
+st.session_state.active_tab = st.radio(
+    "Navigation",
+    tab_names,
+    horizontal=True,
+    index=tab_names.index(st.session_state.active_tab)
+)
 
 # ---------------------------------------------------
-# Onglet 1 : Ajouter Stock
+# 🛒 Onglet 1 : Ajouter Stock
 # ---------------------------------------------------
-with tabs[0]:
+if st.session_state.active_tab == "🛒 Ajouter Stock":
     st.header("Ajouter du stock")
     with st.form("form_stock"):
         produit_stock = st.selectbox("Produit", produits_dispo)
@@ -64,12 +70,11 @@ with tabs[0]:
             row = [str(datetime.now()), produit_stock, quantite_stock, prix_achat]
             spreadsheet.worksheet("Stock").append_row(row)
             st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
-            st.session_state.active_tab = 0  # rester dans cet onglet
 
 # ---------------------------------------------------
-# Onglet 2 : Enregistrer Vente Multi-produits
+# 💰 Onglet 2 : Enregistrer Vente Multi-produits
 # ---------------------------------------------------
-with tabs[1]:
+elif st.session_state.active_tab == "💰 Enregistrer Vente":
     st.header("Enregistrer une vente multi-produits")
 
     if "panier" not in st.session_state:
@@ -103,7 +108,6 @@ with tabs[1]:
                 "Prix unitaire": prix_unitaire,
                 "Total": total_vente
             })
-            st.session_state.active_tab = 1  # rester onglet ventes
 
     # ---------------------------------------------------
     # Affichage du panier modifiable
@@ -115,7 +119,7 @@ with tabs[1]:
         df_panier = pd.DataFrame(st.session_state.panier)
         st.dataframe(df_panier, use_container_width=True)
 
-        # Champs modifiables et suppression
+        # Modification et suppression
         indices_a_supprimer = []
         for i, item in enumerate(st.session_state.panier):
             col1, col2, col3 = st.columns([4, 2, 1])
@@ -130,21 +134,20 @@ with tabs[1]:
             with col3:
                 if st.button("❌ Supprimer", key=f"del_{i}"):
                     indices_a_supprimer.append(i)
-                    st.session_state.active_tab = 1
 
+        # Suppression après boucle
         for index in sorted(indices_a_supprimer, reverse=True):
             st.session_state.panier.pop(index)
 
         st.markdown("---")
 
-        # Bouton pour enregistrer la vente
+        # Bouton enregistrer la vente
         if st.button("Enregistrer la vente", key="enregistrer_vente"):
-            st.session_state.active_tab = 1
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
             vente_valide = True
 
-            # Vérif stock
+            # Vérification du stock
             for item in st.session_state.panier:
                 stock_dispo = df_stock[df_stock['Produit'] == item["Produit"]]['Quantité'].sum()
                 ventes_sum = df_ventes[df_ventes['Produit'] == item["Produit"]]['Quantité'].sum() if not df_ventes.empty else 0
@@ -154,7 +157,7 @@ with tabs[1]:
                     vente_valide = False
 
             if vente_valide:
-                # Générer numéro de facture si demandé
+                # Numéro facture
                 if generer_facture:
                     factures_existantes = df_ventes[df_ventes["Numéro de facture"].notnull()] if not df_ventes.empty else pd.DataFrame()
                     if not factures_existantes.empty:
@@ -174,7 +177,7 @@ with tabs[1]:
                 entreprise_nif = "NIF: 002316105204354"
                 entreprise_art = "ART: 002316300298344"
 
-                # Ajouter ventes à Google Sheet
+                # Ajouter ventes
                 for item in st.session_state.panier:
                     row_vente = [
                         str(datetime.now()), client_nom, client_email, client_tel,
@@ -188,7 +191,7 @@ with tabs[1]:
 
                 st.success(f"Vente enregistrée pour {client_nom} avec {len(st.session_state.panier)} produits.")
 
-                # Génération PDF
+                # Génération PDF facture
                 if generer_facture:
                     pdf = FPDF()
                     pdf.add_page()
@@ -232,6 +235,7 @@ with tabs[1]:
                     pdf.cell(160, 10, "Total TTC:", 0, align="R")
                     pdf.cell(30, 10, f"{total_ttc:.2f}", 1, ln=True)
 
+                    # Montant en lettres
                     ttc_int = int(total_ttc)
                     ttc_centimes = int(round((total_ttc - ttc_int) * 100))
                     if ttc_centimes > 0:
@@ -256,12 +260,13 @@ with tabs[1]:
                         mime="application/pdf"
                     )
 
+                # Vider le panier
                 st.session_state.panier = []
 
 # ---------------------------------------------------
-# Onglet 3 : État Stock
+# 📦 Onglet 3 : État Stock
 # ---------------------------------------------------
-with tabs[2]:
+elif st.session_state.active_tab == "📦 État Stock":
     st.header("État du stock")
     df_stock = load_sheet("Stock")
     df_ventes = load_sheet("Ventes")
@@ -281,9 +286,9 @@ with tabs[2]:
         st.write("Aucun stock enregistré.")
 
 # ---------------------------------------------------
-# Onglet 4 : Historique Ventes
+# 📄 Onglet 4 : Historique Ventes
 # ---------------------------------------------------
-with tabs[3]:
+elif st.session_state.active_tab == "📄 Historique Ventes":
     st.header("Historique des ventes")
     try:
         sheet_ventes = spreadsheet.worksheet("Ventes")
