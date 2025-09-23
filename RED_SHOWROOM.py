@@ -1,162 +1,113 @@
 import streamlit as st
-import pandas as pd
 import gspread
-from google.oauth2.service_account import Credentials
-from datetime import datetime
+from oauth2client.service_account import ServiceAccountCredentials
+import pandas as pd
 from fpdf import FPDF
+import datetime
 import io
-from num2words import num2words
 
-# ---------------- CONFIGURATION GOOGLE SHEETS ----------------
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-creds_dict = st.secrets["google"]
-creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+# Connexion Google Sheets
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 client = gspread.authorize(creds)
 
-SPREADSHEET_ID = "1r4xnyKDaY6jzYGLUORKHlPeGKMCCLkkIx_XvSkIobhc"
-spreadsheet = client.open_by_key(SPREADSHEET_ID)
+# Charger les feuilles Google Sheets
+sheet_ventes = client.open("GestionStock").worksheet("ventes")
+sheet_stock = client.open("GestionStock").worksheet("stock")
 
-# ---------------- SESSION STATE ----------------
-if "onglet_actif" not in st.session_state:
-    st.session_state["onglet_actif"] = "Ajouter Stock"
-
+# Initialiser le panier en session
 if "panier" not in st.session_state:
-    st.session_state["panier"] = []
+    st.session_state.panier = []
 
-# ---------------- NAVIGATION ----------------
-onglets = ["Ajouter Stock", "Enregistrer Vente", "État Stock", "Historique Ventes"]
-onglet = st.radio("Navigation", onglets, index=onglets.index(st.session_state["onglet_actif"]))
-st.session_state["onglet_actif"] = onglet
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = "Enregistrer une vente"
 
-# ---------------- ONGLET AJOUTER STOCK ----------------
-if onglet == "Ajouter Stock":
-    st.header("Ajouter du Stock")
-    df_produits = pd.DataFrame(spreadsheet.worksheet("Produits").get_all_records())
-    produits_dispo = df_produits['Produit'].tolist() if not df_produits.empty else []
+# --- Définition des onglets ---
+tabs = st.tabs(["Ajouter au stock", "Consulter le stock", "Enregistrer une vente"])
+tab_labels = ["Ajouter au stock", "Consulter le stock", "Enregistrer une vente"]
 
-    produit = st.selectbox("Produit", produits_dispo)
-    quantite = st.number_input("Quantité", min_value=1, step=1)
-    prix = st.number_input("Prix Unitaire", min_value=0.0, step=0.1)
+# Associer index -> nom onglet
+tab_index = tab_labels.index(st.session_state.active_tab)
 
-    if st.button("Ajouter au Stock"):
-        spreadsheet.worksheet("Stock").append_row([str(datetime.now()), produit, quantite, prix])
-        st.success("Stock ajouté ✅")
-        st.session_state["onglet_actif"] = "Ajouter Stock"
-
-# ---------------- ONGLET ENREGISTRER VENTE ----------------
-elif onglet == "Enregistrer Vente":
-    st.header("Enregistrer une Vente")
-    df_produits = pd.DataFrame(spreadsheet.worksheet("Produits").get_all_records())
-    produits_dispo = df_produits['Produit'].tolist() if not df_produits.empty else []
-
-    with st.form("form_vente"):
-        client_nom = st.text_input("Nom Client")
-        produit = st.selectbox("Produit", produits_dispo)
+# Onglet 1 : Ajouter au stock
+with tabs[0]:
+    if tab_index == 0:
+        st.header("➕ Ajouter au stock")
+        produit = st.text_input("Nom du produit")
         quantite = st.number_input("Quantité", min_value=1, step=1)
-        generer_pdf = st.checkbox("Générer Facture PDF")
+        prix = st.number_input("Prix unitaire", min_value=0.0, step=0.01)
+        if st.button("Ajouter au stock"):
+            sheet_stock.append_row([produit, quantite, prix])
+            st.success(f"{produit} ajouté au stock ✅")
+            st.session_state.active_tab = "Ajouter au stock"
 
-        prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit, 'Prix unitaire'].values[0]) if not df_produits.empty else 0.0
-        total = prix_unitaire * quantite
-        st.write(f"Prix Unitaire: {prix_unitaire} | Total HT: {total:.2f} | Total TTC: {round(total*1.19,2)}")
+# Onglet 2 : Consulter le stock
+with tabs[1]:
+    if tab_index == 1:
+        st.header("📦 Consulter le stock")
+        data = sheet_stock.get_all_records()
+        df_stock = pd.DataFrame(data)
+        st.dataframe(df_stock)
+        st.session_state.active_tab = "Consulter le stock"
 
-        if st.form_submit_button("Ajouter au Panier"):
-            st.session_state["panier"].append({
-                "Client": client_nom,
-                "Produit": produit,
-                "Quantité": quantite,
-                "Prix unitaire": prix_unitaire,
-                "Total": total
-            })
-            st.success("Produit ajouté au panier ✅")
-            st.session_state["onglet_actif"] = "Enregistrer Vente"
+# Onglet 3 : Enregistrer une vente
+with tabs[2]:
+    if tab_index == 2:
+        st.header("🛒 Enregistrer une vente")
 
-    # ---------------- PANIER ----------------
-    if st.session_state["panier"]:
-        st.subheader("Panier")
-        df_panier = pd.DataFrame(st.session_state["panier"])
-        st.dataframe(df_panier, use_container_width=True)
+        # Formulaire client
+        nom = st.text_input("Nom du client")
+        produit = st.text_input("Produit")
+        quantite = st.number_input("Quantité vendue", min_value=1, step=1)
+        prix = st.number_input("Prix unitaire", min_value=0.0, step=0.01)
 
-        # Modifier / Supprimer
-        indices_a_supprimer = []
-        for i, item in enumerate(st.session_state["panier"]):
-            col1, col2, col3 = st.columns([4, 2, 1])
-            with col1:
-                st.write(item["Produit"])
-            with col2:
-                new_qty = st.number_input(f"Quantité {i}", min_value=1, value=item["Quantité"], key=f"qty_{i}")
-                st.session_state["panier"][i]["Quantité"] = new_qty
-                st.session_state["panier"][i]["Total"] = new_qty * item["Prix unitaire"]
-            with col3:
-                if st.button("❌ Supprimer", key=f"del_{i}"):
-                    indices_a_supprimer.append(i)
+        if st.button("Ajouter au panier"):
+            total = quantite * prix
+            st.session_state.panier.append({"produit": produit, "quantite": quantite, "prix": prix, "total": total})
+            st.success(f"{produit} ajouté au panier ✅")
+            st.session_state.active_tab = "Enregistrer une vente"
 
-        for index in sorted(indices_a_supprimer, reverse=True):
-            st.session_state["panier"].pop(index)
+        # Afficher le panier
+        if st.session_state.panier:
+            st.subheader("🛍️ Panier en cours")
+            df_panier = pd.DataFrame(st.session_state.panier)
+            st.table(df_panier)
 
-        st.markdown("---")
+            total_general = sum(item["total"] for item in st.session_state.panier)
+            st.write(f"💰 **Total TTC : {total_general} DA**")
 
-        # ---------------- ENREGISTRER VENTE ----------------
-        if st.button("Enregistrer Vente", key="enregistrer_vente"):
-            df_stock = pd.DataFrame(spreadsheet.worksheet("Stock").get_all_records())
-            df_ventes = pd.DataFrame(spreadsheet.worksheet("Ventes").get_all_records())
-            vente_valide = True
-
-            # Vérification stock
-            for item in st.session_state["panier"]:
-                stock_dispo = df_stock[df_stock['Produit'] == item["Produit"]]['Quantité'].sum()
-                ventes_sum = df_ventes[df_ventes['Produit'] == item["Produit"]]['Quantité'].sum() if not df_ventes.empty else 0
-                if item["Quantité"] > (stock_dispo - ventes_sum):
-                    st.error(f"Stock insuffisant pour {item['Produit']}")
-                    vente_valide = False
-
-            if vente_valide:
-                for item in st.session_state["panier"]:
-                    numero_facture = f"{len(df_ventes)+1}/{datetime.now().year}" if generer_pdf else ""
-                    spreadsheet.worksheet("Ventes").append_row([
-                        str(datetime.now()), item["Client"], item["Produit"], item["Quantité"],
-                        item["Prix unitaire"], item["Total"], round(item["Total"]*1.19,2), numero_facture
+            if st.button("Enregistrer la vente"):
+                numero_facture = f"FAC-{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}"
+                for item in st.session_state.panier:
+                    sheet_ventes.append_row([
+                        datetime.datetime.now().strftime("%Y-%m-%d"),
+                        nom, "", "", "", "", "", "",  # Infos client
+                        item["produit"], item["quantite"], item["prix"], item["total"], total_general,
+                        "RC_ENTREPRISE", "NIF_ENTREPRISE", "ART_ENTREPRISE", "ADRESSE_ENTREPRISE",
+                        numero_facture
                     ])
+
+                # Génération du PDF
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", size=12)
+                pdf.cell(200, 10, txt=f"Facture {numero_facture}", ln=True, align="C")
+                pdf.cell(200, 10, txt=f"Client : {nom}", ln=True, align="L")
+                pdf.ln(10)
+                for item in st.session_state.panier:
+                    pdf.cell(200, 10, txt=f"{item['produit']} x {item['quantite']} - {item['total']} DA", ln=True)
+                pdf.ln(10)
+                pdf.cell(200, 10, txt=f"Total TTC : {total_general} DA", ln=True)
+
+                # Export
+                buffer = io.BytesIO()
+                pdf.output(buffer)
+                st.download_button("📥 Télécharger la facture", buffer, file_name=f"{numero_facture}.pdf")
+
                 st.success("Vente enregistrée ✅")
-                st.session_state["onglet_actif"] = "Enregistrer Vente"
+                st.session_state.panier = []
+                st.session_state.active_tab = "Enregistrer une vente"
 
-                # Génération PDF
-                if generer_pdf:
-                    pdf = FPDF()
-                    pdf.add_page()
-                    pdf.set_font("Arial", "B", 14)
-                    pdf.cell(0, 10, f"Facture Numéro: {numero_facture}", ln=True, align="C")
-                    pdf.ln(5)
-                    for item in st.session_state["panier"]:
-                        pdf.cell(0, 8, f"{item['Produit']} x {item['Quantité']} = {item['Total']:.2f} DA", ln=True)
-                    pdf_bytes = pdf.output(dest='S').encode('latin1')
-                    pdf_io = io.BytesIO(pdf_bytes)
-                    st.download_button("📥 Télécharger Facture PDF", data=pdf_io, file_name=f"facture_{numero_facture}.pdf", mime="application/pdf")
-
-                st.session_state["panier"] = []
-
-# ---------------- ONGLET ÉTAT STOCK ----------------
-elif onglet == "État Stock":
-    st.header("État du Stock")
-    df_stock = pd.DataFrame(spreadsheet.worksheet("Stock").get_all_records())
-    df_ventes = pd.DataFrame(spreadsheet.worksheet("Ventes").get_all_records())
-    if not df_stock.empty:
-        stock_reel = df_stock.groupby("Produit")["Quantité"].sum().reset_index()
-        if not df_ventes.empty:
-            ventes_group = df_ventes.groupby("Produit")["Quantité"].sum().reset_index()
-            stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left", suffixes=('', '_vendu'))
-            stock_reel['Quantité_vendu'] = stock_reel['Quantité_vendu'].fillna(0)
-            stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_vendu']
-        else:
-            stock_reel['Stock restant'] = stock_reel['Quantité']
-        st.dataframe(stock_reel[['Produit','Stock restant']], use_container_width=True)
-    else:
-        st.info("Aucun stock enregistré.")
-
-# ---------------- ONGLET HISTORIQUE VENTES ----------------
-elif onglet == "Historique Ventes":
-    st.header("Historique des Ventes")
-    df_ventes = pd.DataFrame(spreadsheet.worksheet("Ventes").get_all_records())
-    if not df_ventes.empty:
-        st.dataframe(df_ventes, use_container_width=True)
-    else:
-        st.info("Aucune vente enregistrée.")
+            if st.button("🗑️ Vider le panier"):
+                st.session_state.panier = []
+                st.session_state.active_tab = "Enregistrer une vente"
