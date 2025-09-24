@@ -250,21 +250,4 @@ elif tab_choice.title == "📦 État Stock":
             stock_reel['Stock restant'] = stock_reel['Quantité']
         st.dataframe(stock_reel[['Produit','Stock restant']], use_container_width=True)
     else:
-        st.write("Aucun stock enregistré.")
-
-# -----------------------------
-# Onglet 4 : Historique Ventes
-# -----------------------------
-elif tab_choice.title == "📄 Historique Ventes":
-    st.header("Historique des ventes")
-    try:
-        sheet_ventes = spreadsheet.worksheet("Ventes")
-        data_ventes = sheet_ventes.get_all_records()
-        df_ventes = pd.DataFrame(data_ventes)
-    except Exception as e:
-        st.error(f"Erreur lors du chargement des ventes : {e}")
-        df_ventes = pd.DataFrame()
-    if not df_ventes.empty:
-        st.dataframe(df_ventes, use_container_width=True)
-    else:
-        st.write("Aucune vente enregistrée.")
+        st.write("Aucun
