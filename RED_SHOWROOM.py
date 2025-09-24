@@ -16,10 +16,15 @@ st.title("📊 Gestion Showroom")
 # ---------------------------------------------------
 # 🔹 Connexion Google Sheets
 # ---------------------------------------------------
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-creds_dict = st.secrets["google"]
-creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+
+# ⚠️ Assurez-vous d’avoir credentials.json dans votre projet
+creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
 client = gspread.authorize(creds)
+
 SPREADSHEET_ID = "1r4xnyKDaY6jzYGLUORKHlPeGKMCCLkkIx_XvSkIobhc"
 spreadsheet = client.open_by_key(SPREADSHEET_ID)
 
@@ -43,21 +48,21 @@ df_produits = load_sheet("Produits")
 produits_dispo = df_produits['Produit'].tolist() if not df_produits.empty else []
 
 # ---------------------------------------------------
-# 🔹 Session state
+# 🔹 Gestion onglets avec session_state
 # ---------------------------------------------------
+tabs_labels = ["🛒 Ajouter Stock", "💰 Enregistrer Vente", "📦 État Stock", "📄 Historique Ventes"]
+if "active_tab" not in st.session_state:
+    st.session_state.active_tab = 0
 if "panier" not in st.session_state:
     st.session_state.panier = []
 
-# ---------------------------------------------------
-# 🔹 Onglets horizontaux
-# ---------------------------------------------------
-tabs_labels = ["🛒 Ajouter Stock", "💰 Enregistrer Vente", "📦 État Stock", "📄 Historique Ventes"]
-tabs = st.tabs(tabs_labels)
+tab_choice = st.radio("Choisir l'onglet", tabs_labels, index=st.session_state.active_tab)
+st.session_state.active_tab = tabs_labels.index(tab_choice)
 
-# -------------------------------
+# ---------------------------------------------------
 # Onglet 1 : Ajouter Stock
-# -------------------------------
-with tabs[0]:
+# ---------------------------------------------------
+if tab_choice == "🛒 Ajouter Stock":
     st.header("Ajouter du stock")
     with st.form("form_stock"):
         produit_stock = st.selectbox("Produit", produits_dispo)
@@ -68,11 +73,12 @@ with tabs[0]:
             spreadsheet.worksheet("Stock").append_row(row)
             st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
 
-# -------------------------------
-# Onglet 2 : Enregistrer Vente
-# -------------------------------
-with tabs[1]:
+# ---------------------------------------------------
+# Onglet 2 : Enregistrer Vente Multi-produits
+# ---------------------------------------------------
+elif tab_choice == "💰 Enregistrer Vente":
     st.header("Enregistrer une vente multi-produits")
+
     with st.form("form_vente_multi"):
         produit_vente = st.selectbox("Produit vendu", produits_dispo)
         quantite_vente = st.number_input("Quantité vendue", min_value=1, step=1)
@@ -102,9 +108,12 @@ with tabs[1]:
                 "Total": total_vente
             })
 
-    # Affichage du panier
+    # ---------------------------------------------------
+    # Affichage du panier modifiable
+    # ---------------------------------------------------
     if st.session_state.panier:
         st.subheader("Panier actuel (modifiable)")
+
         df_panier = pd.DataFrame(st.session_state.panier)
         st.dataframe(df_panier, use_container_width=True)
 
@@ -115,7 +124,9 @@ with tabs[1]:
             with col1:
                 st.write(item["Produit"])
             with col2:
-                nouvelle_quantite = st.number_input(f"Quantité {i}", min_value=1, value=item["Quantité"], key=f"qty_{i}")
+                nouvelle_quantite = st.number_input(
+                    f"Quantité {i}", min_value=1, value=item["Quantité"], key=f"qty_{i}"
+                )
                 st.session_state.panier[i]["Quantité"] = nouvelle_quantite
                 st.session_state.panier[i]["Total"] = nouvelle_quantite * item["Prix unitaire"]
             with col3:
@@ -127,7 +138,7 @@ with tabs[1]:
 
         st.markdown("---")
 
-        # Enregistrer la vente
+        # Bouton pour enregistrer la vente
         if st.button("Enregistrer la vente", key="enregistrer_vente"):
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
@@ -247,12 +258,13 @@ with tabs[1]:
                         mime="application/pdf"
                     )
 
+                # Vider le panier après enregistrement
                 st.session_state.panier = []
 
-# -------------------------------
+# ---------------------------------------------------
 # Onglet 3 : État Stock
-# -------------------------------
-with tabs[2]:
+# ---------------------------------------------------
+elif tab_choice == "📦 État Stock":
     st.header("État du stock")
     df_stock = load_sheet("Stock")
     df_ventes = load_sheet("Ventes")
@@ -271,10 +283,10 @@ with tabs[2]:
     else:
         st.write("Aucun stock enregistré.")
 
-# -------------------------------
+# ---------------------------------------------------
 # Onglet 4 : Historique Ventes
-# -------------------------------
-with tabs[3]:
+# ---------------------------------------------------
+elif tab_choice == "📄 Historique Ventes":
     st.header("Historique des ventes")
     try:
         sheet_ventes = spreadsheet.worksheet("Ventes")
