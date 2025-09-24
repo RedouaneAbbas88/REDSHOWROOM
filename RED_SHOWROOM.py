@@ -7,30 +7,30 @@ from fpdf import FPDF
 import io
 from num2words import num2words
 
-# ---------------------------------------------------
+# -----------------------------
 # ⚙️ Configuration Streamlit
-# ---------------------------------------------------
+# -----------------------------
 st.set_page_config(page_title="Showroom Stock & Vente", layout="wide")
 st.title("📊 Gestion Showroom")
 
-# ---------------------------------------------------
+# -----------------------------
 # 🔹 Connexion Google Sheets
-# ---------------------------------------------------
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
-]
+# -----------------------------
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets",
+          "https://www.googleapis.com/auth/drive"]
 
-# ⚠️ Assurez-vous d’avoir credentials.json dans votre projet
-creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+# Récupération des credentials depuis Streamlit secrets
+creds_dict = st.secrets["google"]
+creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
 client = gspread.authorize(creds)
 
+# ID de la feuille Google
 SPREADSHEET_ID = "1r4xnyKDaY6jzYGLUORKHlPeGKMCCLkkIx_XvSkIobhc"
 spreadsheet = client.open_by_key(SPREADSHEET_ID)
 
-# ---------------------------------------------------
-# 🔹 Fonction pour charger une feuille
-# ---------------------------------------------------
+# -----------------------------
+# 🔹 Charger une feuille
+# -----------------------------
 @st.cache_data(ttl=10)
 def load_sheet(sheet_name):
     try:
@@ -41,15 +41,15 @@ def load_sheet(sheet_name):
         st.error(f"Erreur lors du chargement de la feuille '{sheet_name}': {e}")
         return pd.DataFrame()
 
-# ---------------------------------------------------
+# -----------------------------
 # 🔹 Données initiales
-# ---------------------------------------------------
+# -----------------------------
 df_produits = load_sheet("Produits")
 produits_dispo = df_produits['Produit'].tolist() if not df_produits.empty else []
 
-# ---------------------------------------------------
-# 🔹 Gestion onglets avec session_state
-# ---------------------------------------------------
+# -----------------------------
+# 🔹 Gestion des onglets
+# -----------------------------
 tabs_labels = ["🛒 Ajouter Stock", "💰 Enregistrer Vente", "📦 État Stock", "📄 Historique Ventes"]
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = 0
@@ -59,9 +59,9 @@ if "panier" not in st.session_state:
 tab_choice = st.radio("Choisir l'onglet", tabs_labels, index=st.session_state.active_tab)
 st.session_state.active_tab = tabs_labels.index(tab_choice)
 
-# ---------------------------------------------------
+# -----------------------------
 # Onglet 1 : Ajouter Stock
-# ---------------------------------------------------
+# -----------------------------
 if tab_choice == "🛒 Ajouter Stock":
     st.header("Ajouter du stock")
     with st.form("form_stock"):
@@ -73,9 +73,9 @@ if tab_choice == "🛒 Ajouter Stock":
             spreadsheet.worksheet("Stock").append_row(row)
             st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
 
-# ---------------------------------------------------
-# Onglet 2 : Enregistrer Vente Multi-produits
-# ---------------------------------------------------
+# -----------------------------
+# Onglet 2 : Enregistrer Vente
+# -----------------------------
 elif tab_choice == "💰 Enregistrer Vente":
     st.header("Enregistrer une vente multi-produits")
 
@@ -92,10 +92,8 @@ elif tab_choice == "💰 Enregistrer Vente":
         client_art = st.text_input("ART du client")
         client_adresse = st.text_input("Adresse du client")
 
-        # Case à cocher pour générer facture
         generer_facture = st.checkbox("Générer une facture PDF")
 
-        # Prix produit
         prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0]) if not df_produits.empty else 0.0
         total_vente = prix_unitaire * quantite_vente
         st.write(f"Prix unitaire : {prix_unitaire} | Total HT : {total_vente:.2f} | Total TTC : {round(total_vente*1.19,2)}")
@@ -108,43 +106,36 @@ elif tab_choice == "💰 Enregistrer Vente":
                 "Total": total_vente
             })
 
-    # ---------------------------------------------------
-    # Affichage du panier modifiable
-    # ---------------------------------------------------
+    # Affichage du panier
     if st.session_state.panier:
         st.subheader("Panier actuel (modifiable)")
-
         df_panier = pd.DataFrame(st.session_state.panier)
-        st.dataframe(df_panier, use_container_width=True)
+        st.dataframe(df_panier, use_container_width=True, hide_index=True)
 
-        # Champs modifiables et suppression
         indices_a_supprimer = []
         for i, item in enumerate(st.session_state.panier):
-            col1, col2, col3 = st.columns([4, 2, 1])
+            col1, col2, col3 = st.columns([4,2,1])
             with col1:
                 st.write(item["Produit"])
             with col2:
-                nouvelle_quantite = st.number_input(
-                    f"Quantité {i}", min_value=1, value=item["Quantité"], key=f"qty_{i}"
-                )
+                nouvelle_quantite = st.number_input(f"Quantité {i}", min_value=1, value=item["Quantité"], key=f"qty_{i}")
                 st.session_state.panier[i]["Quantité"] = nouvelle_quantite
                 st.session_state.panier[i]["Total"] = nouvelle_quantite * item["Prix unitaire"]
             with col3:
                 if st.button("❌ Supprimer", key=f"del_{i}"):
                     indices_a_supprimer.append(i)
-
         for index in sorted(indices_a_supprimer, reverse=True):
             st.session_state.panier.pop(index)
 
         st.markdown("---")
 
-        # Bouton pour enregistrer la vente
+        # Enregistrer la vente
         if st.button("Enregistrer la vente", key="enregistrer_vente"):
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
             vente_valide = True
 
-            # Vérif stock
+            # Vérification stock
             for item in st.session_state.panier:
                 stock_dispo = df_stock[df_stock['Produit'] == item["Produit"]]['Quantité'].sum()
                 ventes_sum = df_ventes[df_ventes['Produit'] == item["Produit"]]['Quantité'].sum() if not df_ventes.empty else 0
@@ -154,7 +145,7 @@ elif tab_choice == "💰 Enregistrer Vente":
                     vente_valide = False
 
             if vente_valide:
-                # Générer numéro de facture si demandé
+                prochain_num = ""
                 if generer_facture:
                     factures_existantes = df_ventes[df_ventes["Numéro de facture"].notnull()] if not df_ventes.empty else pd.DataFrame()
                     if not factures_existantes.empty:
@@ -164,10 +155,7 @@ elif tab_choice == "💰 Enregistrer Vente":
                     else:
                         dernier_num = 0
                     prochain_num = f"{dernier_num + 1:03d}/2025"
-                else:
-                    prochain_num = ""
 
-                # Infos entreprise
                 entreprise_nom = "NORTH AFRICA ELECTRONICS"
                 entreprise_adresse = "123 Rue Principale, Alger"
                 entreprise_rc = "RC: 16/00-1052043 B23"
@@ -195,97 +183,79 @@ elif tab_choice == "💰 Enregistrer Vente":
                     pdf.set_font("Arial", 'B', 14)
                     pdf.cell(200, 10, txt=f"Facture Num : {prochain_num}", ln=True, align="C")
                     pdf.ln(5)
-
                     pdf.set_font("Arial", size=12)
-                    pdf.cell(200, 5, txt=f"{entreprise_nom}", ln=True)
-                    pdf.cell(200, 5, txt=f"{entreprise_adresse}", ln=True)
-                    pdf.cell(200, 5, txt=f"{entreprise_rc} | {entreprise_nif} | {entreprise_art}", ln=True)
+                    pdf.cell(200,5, txt=f"{entreprise_nom}", ln=True)
+                    pdf.cell(200,5, txt=f"{entreprise_adresse}", ln=True)
+                    pdf.cell(200,5, txt=f"{entreprise_rc} | {entreprise_nif} | {entreprise_art}", ln=True)
                     pdf.ln(5)
-
-                    pdf.cell(200, 5, txt=f"Client: {client_nom}", ln=True)
-                    pdf.cell(200, 5, txt=f"Email: {client_email} | Tel: {client_tel}", ln=True)
-                    pdf.cell(200, 5, txt=f"RC: {client_rc} | NIF: {client_nif} | ART: {client_art} | Adresse: {client_adresse}", ln=True)
+                    pdf.cell(200,5, txt=f"Client: {client_nom}", ln=True)
+                    pdf.cell(200,5, txt=f"Email: {client_email} | Tel: {client_tel}", ln=True)
+                    pdf.cell(200,5, txt=f"RC: {client_rc} | NIF: {client_nif} | ART: {client_art} | Adresse: {client_adresse}", ln=True)
                     pdf.ln(5)
-
                     pdf.cell(50, 10, "Produit", 1)
                     pdf.cell(30, 10, "Quantité", 1)
                     pdf.cell(40, 10, "Prix HT", 1)
                     pdf.cell(40, 10, "Total HT", 1)
                     pdf.cell(30, 10, "Total TTC", 1, ln=True)
-
                     total_ht = 0
                     total_ttc = 0
                     for item in st.session_state.panier:
                         total_ht += item["Total"]
                         total_ttc += item["Total"] * 1.19
-                        pdf.cell(50, 10, str(item["Produit"]), 1)
-                        pdf.cell(30, 10, str(item["Quantité"]), 1)
-                        pdf.cell(40, 10, f"{item['Prix unitaire']:.2f}", 1)
-                        pdf.cell(40, 10, f"{item['Total']:.2f}", 1)
-                        pdf.cell(30, 10, f"{item['Total'] * 1.19:.2f}", 1, ln=True)
-
+                        pdf.cell(50,10,str(item["Produit"]),1)
+                        pdf.cell(30,10,str(item["Quantité"]),1)
+                        pdf.cell(40,10,f"{item['Prix unitaire']:.2f}",1)
+                        pdf.cell(40,10,f"{item['Total']:.2f}",1)
+                        pdf.cell(30,10,f"{item['Total']*1.19:.2f}",1, ln=True)
                     total_tva = total_ttc - total_ht
-                    pdf.cell(160, 10, "Total HT:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_ht:.2f}", 1, ln=True)
-                    pdf.cell(160, 10, "Total TVA 19%:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_tva:.2f}", 1, ln=True)
-                    pdf.cell(160, 10, "Total TTC:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_ttc:.2f}", 1, ln=True)
-
-                    # Montant en lettres
+                    pdf.cell(160,10,"Total HT:",0,align="R")
+                    pdf.cell(30,10,f"{total_ht:.2f}",1,ln=True)
+                    pdf.cell(160,10,"Total TVA 19%:",0,align="R")
+                    pdf.cell(30,10,f"{total_tva:.2f}",1,ln=True)
+                    pdf.cell(160,10,"Total TTC:",0,align="R")
+                    pdf.cell(30,10,f"{total_ttc:.2f}",1,ln=True)
                     ttc_int = int(total_ttc)
                     ttc_centimes = int(round((total_ttc - ttc_int) * 100))
                     if ttc_centimes > 0:
-                        montant_lettres = (
-                            num2words(ttc_int, lang='fr') + " dinars et " +
-                            num2words(ttc_centimes, lang='fr') + " centimes algériens"
-                        )
+                        montant_lettres = num2words(ttc_int, lang='fr') + " dinars et " + num2words(ttc_centimes, lang='fr') + " centimes algériens"
                     else:
                         montant_lettres = num2words(ttc_int, lang='fr') + " dinars algériens"
-
                     pdf.ln(10)
-                    pdf.set_font("Arial", 'I', 11)
-                    pdf.multi_cell(0, 10, f"Arrêté la présente facture à la somme de : {montant_lettres}")
+                    pdf.set_font("Arial",'I',11)
+                    pdf.multi_cell(0,10,f"Arrêté la présente facture à la somme de : {montant_lettres}")
 
-                    # Export PDF pour téléchargement
                     pdf_bytes = pdf.output(dest='S').encode('latin1')
                     pdf_io = io.BytesIO(pdf_bytes)
 
-                    st.download_button(
-                        label="📥 Télécharger la facture",
-                        data=pdf_io,
-                        file_name=f"facture_{client_nom}_{prochain_num}.pdf",
-                        mime="application/pdf"
-                    )
+                    st.download_button(label="📥 Télécharger la facture", data=pdf_io,
+                                       file_name=f"facture_{client_nom}_{prochain_num}.pdf", mime="application/pdf")
 
-                # Vider le panier après enregistrement
+                # Vider le panier
                 st.session_state.panier = []
 
-# ---------------------------------------------------
+# -----------------------------
 # Onglet 3 : État Stock
-# ---------------------------------------------------
+# -----------------------------
 elif tab_choice == "📦 État Stock":
     st.header("État du stock")
     df_stock = load_sheet("Stock")
     df_ventes = load_sheet("Ventes")
-
-    if not df_stock.empty and "Produit" in df_stock.columns and "Quantité" in df_stock.columns:
+    if not df_stock.empty:
         stock_reel = df_stock.groupby("Produit")["Quantité"].sum().reset_index()
-        if not df_ventes.empty and "Produit" in df_ventes.columns and "Quantité" in df_ventes.columns:
+        if not df_ventes.empty:
             ventes_group = df_ventes.groupby("Produit")["Quantité"].sum().reset_index()
             stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left", suffixes=('', '_vendu'))
             stock_reel['Quantité_vendu'] = stock_reel['Quantité_vendu'].fillna(0)
             stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_vendu']
         else:
             stock_reel['Stock restant'] = stock_reel['Quantité']
-
-        st.dataframe(stock_reel[['Produit', 'Stock restant']], use_container_width=True)
+        st.dataframe(stock_reel[['Produit','Stock restant']], use_container_width=True)
     else:
         st.write("Aucun stock enregistré.")
 
-# ---------------------------------------------------
+# -----------------------------
 # Onglet 4 : Historique Ventes
-# ---------------------------------------------------
+# -----------------------------
 elif tab_choice == "📄 Historique Ventes":
     st.header("Historique des ventes")
     try:
@@ -295,8 +265,8 @@ elif tab_choice == "📄 Historique Ventes":
     except Exception as e:
         st.error(f"Erreur lors du chargement des ventes : {e}")
         df_ventes = pd.DataFrame()
-
     if not df_ventes.empty:
         st.dataframe(df_ventes, use_container_width=True)
     else:
         st.write("Aucune vente enregistrée.")
+
