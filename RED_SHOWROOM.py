@@ -325,7 +325,7 @@ elif tab_choice == "💳 Paiements partiels":
     if not df_ventes.empty:
         df_partiels = df_ventes[df_ventes["Reste à payer"] > 0]
         if not df_partiels.empty:
-            st.dataframe(df_partiels[["Produit", "Nom du client", "Montant payé", "Reste à payer"]],
+            st.dataframe(df_partiels[["Produit", "Nom", "Montant payé", "Reste à payer"]],
                          use_container_width=True)
         else:
             st.write("Aucun paiement partiel en cours.")
