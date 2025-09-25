@@ -56,15 +56,17 @@ tab_choice = st.radio("Choisir l'onglet", tabs_labels, index=st.session_state.ac
 st.session_state.active_tab = tabs_labels.index(tab_choice)
 
 # -----------------------------
-# 🔹 Fonction de sélection hiérarchique
+# 🔹 Fonction sélection hiérarchique
 # -----------------------------
 def selection_produit(df, prefix=""):
     if df.empty:
-        st.error("La feuille Produits est vide !")
+        st.warning("La feuille Produits est vide !")
         return "", "", "", "", 0.0
 
     # Marque
     marques_dispo = df['Marque'].dropna().unique().tolist()
+    if not marques_dispo:
+        return "", "", "", "", 0.0
     marque_key = f"{prefix}_marque"
     marque_choisie = st.selectbox("Marque *", marques_dispo, key=marque_key)
 
@@ -85,7 +87,7 @@ def selection_produit(df, prefix=""):
     produit_key = f"{prefix}_produit"
     produit_choisi = st.selectbox("Produit *", produits_dispo, key=produit_key) if produits_dispo else ""
 
-    # Prix unitaire sécurisé
+    # Prix unitaire
     df_selection = df[(df['Marque'] == marque_choisie) &
                       (df['Catégorie'] == categorie_choisie) &
                       (df['Famille'] == famille_choisie) &
@@ -95,29 +97,24 @@ def selection_produit(df, prefix=""):
     return marque_choisie, categorie_choisie, famille_choisie, produit_choisi, prix_unitaire
 
 # -----------------------------
-# 🛒 Onglet 1 : Ajouter Stock
+# Onglet 1 : Ajouter Stock
 # -----------------------------
 if tab_choice == "🛒 Ajouter Stock":
     st.header("Ajouter du stock")
-
     with st.form("form_stock"):
         marque, categorie, famille, produit_stock, prix_achat = selection_produit(df_produits, prefix="stock")
         quantite_stock = st.number_input("Quantité achetée", min_value=1, step=1)
 
         if st.form_submit_button("Ajouter au stock"):
-            if produit_stock == "":
-                st.error("⚠️ Veuillez sélectionner un produit valide.")
-            else:
-                row = [str(datetime.now()), marque, categorie, famille, produit_stock, quantite_stock, prix_achat]
-                spreadsheet.worksheet("Stock").append_row(row)
-                st.success(f"{quantite_stock} x {produit_stock} ajouté(s) au stock.")
+            row = [str(datetime.now()), marque, categorie, famille, produit_stock, quantite_stock, prix_achat]
+            spreadsheet.worksheet("Stock").append_row(row)
+            st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
 
 # -----------------------------
-# 💰 Onglet 2 : Enregistrer Vente
+# Onglet 2 : Enregistrer Vente
 # -----------------------------
 elif tab_choice == "💰 Enregistrer Vente":
     st.header("Enregistrer une vente multi-produits")
-
     with st.form("form_vente_multi"):
         marque, categorie, famille, produit_vente, prix_unitaire = selection_produit(df_produits, prefix="vente")
         quantite_vente = st.number_input("Quantité vendue *", min_value=1, step=1)
@@ -178,13 +175,12 @@ elif tab_choice == "💰 Enregistrer Vente":
         for index in sorted(indices_a_supprimer, reverse=True):
             st.session_state.panier.pop(index)
 
-    # Enregistrer vente et générer facture
-    if st.button("Enregistrer la vente", key="enregistrer_vente") and st.session_state.panier:
+    # Enregistrement vente
+    if st.button("Enregistrer la vente", key="enregistrer_vente"):
         df_stock = load_sheet("Stock")
         df_ventes = load_sheet("Ventes")
         vente_valide = True
 
-        # Vérification stock
         for item in st.session_state.panier:
             stock_dispo = df_stock[df_stock['Produit'] == item["Produit"]]['Quantité'].sum()
             ventes_sum = df_ventes[df_ventes['Produit'] == item["Produit"]]['Quantité'].sum() if not df_ventes.empty else 0
@@ -211,7 +207,6 @@ elif tab_choice == "💰 Enregistrer Vente":
             entreprise_nif = "NIF: 002316105204354"
             entreprise_art = "ART: 002316300298344"
 
-            # Enregistrement dans Google Sheet
             for item in st.session_state.panier:
                 row_vente = [
                     str(datetime.now()), client_nom, client_email, client_tel,
@@ -282,14 +277,13 @@ elif tab_choice == "💰 Enregistrer Vente":
 
                 pdf_bytes = pdf.output(dest='S').encode('latin1')
                 pdf_io = io.BytesIO(pdf_bytes)
-                st.download_button(label="📥 Télécharger la facture", data=pdf_io,
-                                   file_name=f"facture_{client_nom}_{prochain_num}.pdf", mime="application/pdf")
+                st.download_button(label="📥 Télécharger la facture", data=pdf_io, file_name=f"facture_{client_nom}_{prochain_num}.pdf", mime="application/pdf")
 
             st.success(f"Vente enregistrée pour {client_nom} avec {len(st.session_state.panier)} produits.")
             st.session_state.panier = []
 
 # -----------------------------
-# 📦 Onglet 3 : État Stock
+# Onglet 3 : État Stock
 # -----------------------------
 elif tab_choice == "📦 État Stock":
     st.header("État du stock")
@@ -312,30 +306,22 @@ elif tab_choice == "📦 État Stock":
         st.write("Aucun stock enregistré.")
 
 # -----------------------------
-# 📄 Onglet 4 : Historique Ventes
+# Onglet 4 : Historique Ventes
 # -----------------------------
 elif tab_choice == "📄 Historique Ventes":
     st.header("Historique des ventes")
-    try:
-        sheet_ventes = spreadsheet.worksheet("Ventes")
-        data_ventes = sheet_ventes.get_all_records()
-        df_ventes = pd.DataFrame(data_ventes)
-    except Exception as e:
-        st.error(f"Erreur lors du chargement des ventes : {e}")
-        df_ventes = pd.DataFrame()
-
+    df_ventes = load_sheet("Ventes")
     if not df_ventes.empty:
         st.dataframe(df_ventes, use_container_width=True)
     else:
         st.write("Aucune vente enregistrée.")
 
 # -----------------------------
-# 💳 Onglet 5 : Paiements partiels
+# Onglet 5 : Paiements partiels
 # -----------------------------
 elif tab_choice == "💳 Paiements partiels":
     st.header("État des paiements partiels")
     df_ventes = load_sheet("Ventes")
-
     if not df_ventes.empty:
         df_partiels = df_ventes[df_ventes["Reste à payer"] > 0]
         if not df_partiels.empty:
