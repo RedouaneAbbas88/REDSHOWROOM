@@ -26,37 +26,30 @@ client = gspread.authorize(creds)
 SPREADSHEET_ID = "1r4xnyKDaY6jzYGLUORKHlPeGKMCCLkkIx_XvSkIobhc"
 spreadsheet = client.open_by_key(SPREADSHEET_ID)
 
+
 # -----------------------------
-# 🔹 Charger une feuille
+# 🔹 Charger une feuille Google Sheet
 # -----------------------------
 @st.cache_data(ttl=10)
 def load_sheet(sheet_name):
     try:
         sheet = spreadsheet.worksheet(sheet_name)
-        data = sheet.get_all_records()
+        expected_headers = ["Date", "Marque", "Catégorie", "Famille", "Produit", "Quantité", "Prix unitaire"]
+        data = sheet.get_all_records(expected_headers=expected_headers)
         df = pd.DataFrame(data)
-        # Nettoyage des noms de colonnes
+        df = df.loc[:, df.columns.str.strip() != '']  # Supprimer colonnes vides
         df.columns = df.columns.str.strip()
         return df
     except Exception as e:
         st.error(f"Erreur lors du chargement de la feuille '{sheet_name}': {e}")
         return pd.DataFrame()
 
+
 # -----------------------------
 # 🔹 Données initiales
 # -----------------------------
 df_produits = load_sheet("Produits")
-if not df_produits.empty:
-    df_produits.columns = df_produits.columns.str.strip()
-    marques_dispo = df_produits['Marque'].unique().tolist()
-    categories_dispo = df_produits['Catégorie'].unique().tolist()
-    familles_dispo = df_produits['Famille'].unique().tolist()
-    produits_dispo = df_produits['Produit'].tolist()
-else:
-    marques_dispo = []
-    categories_dispo = []
-    familles_dispo = []
-    produits_dispo = []
+marques_dispo = df_produits['Marque'].dropna().unique().tolist() if not df_produits.empty else []
 
 # -----------------------------
 # 🔹 Gestion des onglets
@@ -75,67 +68,55 @@ st.session_state.active_tab = tabs_labels.index(tab_choice)
 # -----------------------------
 if tab_choice == "🛒 Ajouter Stock":
     st.header("Ajouter du stock")
+    df_stock = load_sheet("Stock")
+
     with st.form("form_stock"):
-        marque_stock = st.selectbox("Marque", marques_dispo)
-        categorie_stock = st.selectbox(
-            "Catégorie",
-            df_produits[df_produits['Marque'] == marque_stock]['Catégorie'].unique() if marque_stock else []
-        )
-        famille_stock = st.selectbox(
-            "Famille",
-            df_produits[(df_produits['Marque'] == marque_stock) &
-                        (df_produits['Catégorie'] == categorie_stock)]['Famille'].unique() if categorie_stock else []
-        )
-        produit_stock = st.selectbox(
-            "Produit",
-            df_produits[(df_produits['Marque'] == marque_stock) &
-                        (df_produits['Catégorie'] == categorie_stock) &
-                        (df_produits['Famille'] == famille_stock)]['Produit'].tolist() if famille_stock else []
-        )
+        # Sélection dépendante : Marque → Catégorie → Famille → Produit
+        marque_sel = st.selectbox("Marque", marques_dispo)
+        categories_dispo = df_produits[df_produits['Marque'] == marque_sel]['Catégorie'].dropna().unique().tolist()
+        categorie_sel = st.selectbox("Catégorie", categories_dispo)
+        familles_dispo = df_produits[(df_produits['Marque'] == marque_sel) &
+                                     (df_produits['Catégorie'] == categorie_sel)]['Famille'].dropna().unique().tolist()
+        famille_sel = st.selectbox("Famille", familles_dispo)
+        produits_dispo_filtre = df_produits[(df_produits['Marque'] == marque_sel) &
+                                            (df_produits['Catégorie'] == categorie_sel) &
+                                            (df_produits['Famille'] == famille_sel)]['Produit'].dropna().tolist()
+        produit_sel = st.selectbox("Produit", produits_dispo_filtre)
+
         quantite_stock = st.number_input("Quantité achetée", min_value=1, step=1)
-        prix_achat = st.number_input("Prix d'achat unitaire", min_value=0.0, step=1.0, disabled=True)
+        prix_unitaire = st.number_input("Prix unitaire", min_value=0.0, step=1.0, disabled=True)
 
         if st.form_submit_button("Ajouter au stock"):
-            row = [str(datetime.now()), marque_stock, categorie_stock, famille_stock, produit_stock, quantite_stock, prix_achat]
+            row = [str(datetime.now()), marque_sel, categorie_sel, famille_sel, produit_sel, quantite_stock,
+                   prix_unitaire]
             spreadsheet.worksheet("Stock").append_row(row)
-            st.success(f"{quantite_stock} x {produit_stock} ajouté(s) au stock.")
+            st.success(f"{quantite_stock} x {produit_sel} ajouté(s) au stock.")
 
 # -----------------------------
 # Onglet 2 : Enregistrer Vente
 # -----------------------------
 elif tab_choice == "💰 Enregistrer Vente":
     st.header("Enregistrer une vente multi-produits")
-    df_stock = load_sheet("Stock")
-    df_ventes = load_sheet("Ventes")
-    for col in ["Marque", "Catégorie", "Famille", "Produit", "Quantité"]:
-        if col not in df_stock.columns:
-            df_stock[col] = ""
-        if col not in df_ventes.columns:
-            df_ventes[col] = 0
 
     with st.form("form_vente_multi"):
-        marque_vente = st.selectbox("Marque", marques_dispo)
-        categorie_vente = st.selectbox(
-            "Catégorie",
-            df_produits[df_produits['Marque'] == marque_vente]['Catégorie'].unique() if marque_vente else []
-        )
-        famille_vente = st.selectbox(
-            "Famille",
-            df_produits[(df_produits['Marque'] == marque_vente) &
-                        (df_produits['Catégorie'] == categorie_vente)]['Famille'].unique() if categorie_vente else []
-        )
-        produit_vente = st.selectbox(
-            "Produit vendu *",
-            df_produits[(df_produits['Marque'] == marque_vente) &
-                        (df_produits['Catégorie'] == categorie_vente) &
-                        (df_produits['Famille'] == famille_vente)]['Produit'].tolist() if famille_vente else []
-        )
+        # Sélection dépendante : Marque → Catégorie → Famille → Produit
+        marque_sel = st.selectbox("Marque", marques_dispo)
+        categories_dispo = df_produits[df_produits['Marque'] == marque_sel]['Catégorie'].dropna().unique().tolist()
+        categorie_sel = st.selectbox("Catégorie", categories_dispo)
+        familles_dispo = df_produits[(df_produits['Marque'] == marque_sel) &
+                                     (df_produits['Catégorie'] == categorie_sel)]['Famille'].dropna().unique().tolist()
+        famille_sel = st.selectbox("Famille", familles_dispo)
+        produits_dispo_filtre = df_produits[(df_produits['Marque'] == marque_sel) &
+                                            (df_produits['Catégorie'] == categorie_sel) &
+                                            (df_produits['Famille'] == famille_sel)]['Produit'].dropna().tolist()
+        produit_sel = st.selectbox("Produit vendu *", produits_dispo_filtre)
+
         quantite_vente = st.number_input("Quantité vendue *", min_value=1, step=1)
 
-        # Infos client
+        # Infos client obligatoires
         client_nom = st.text_input("Nom du client *")
-        client_email = st.text_input("Email du client")
         client_tel = st.text_input("Téléphone du client *")
+        client_email = st.text_input("Email du client")
         client_rc = st.text_input("RC du client")
         client_nif = st.text_input("NIF du client")
         client_art = st.text_input("ART du client")
@@ -143,26 +124,29 @@ elif tab_choice == "💰 Enregistrer Vente":
 
         generer_facture = st.checkbox("Générer une facture PDF")
 
-        prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0]) if not df_produits.empty else 0.0
+        prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_sel, 'Prix unitaire'].values[
+                                  0]) if not df_produits.empty else 0.0
         total_vente = prix_unitaire * quantite_vente
-        st.write(f"Prix unitaire : {prix_unitaire} | Total HT : {total_vente:.2f} | Total TTC : {round(total_vente*1.19,2)}")
+        st.write(
+            f"Prix unitaire : {prix_unitaire} | Total HT : {total_vente:.2f} | Total TTC : {round(total_vente * 1.19, 2)}")
 
         if st.form_submit_button("Ajouter au panier"):
-            if not produit_vente or quantite_vente <= 0 or not client_nom.strip() or not client_tel.strip():
-                st.error("⚠️ Merci de remplir tous les champs obligatoires : Produit, Quantité, Nom du client et Téléphone.")
+            if not produit_sel or quantite_vente <= 0 or not client_nom.strip() or not client_tel.strip():
+                st.error(
+                    "⚠️ Merci de remplir tous les champs obligatoires : Produit, Quantité, Nom et Téléphone du client.")
             else:
                 st.session_state.panier.append({
-                    "Marque": marque_vente,
-                    "Catégorie": categorie_vente,
-                    "Famille": famille_vente,
-                    "Produit": produit_vente,
+                    "Marque": marque_sel,
+                    "Catégorie": categorie_sel,
+                    "Famille": famille_sel,
+                    "Produit": produit_sel,
                     "Quantité": quantite_vente,
                     "Prix unitaire": prix_unitaire,
                     "Total": total_vente
                 })
-                st.success(f"{quantite_vente} x {produit_vente} ajouté(s) au panier.")
+                st.success(f"{quantite_vente} x {produit_sel} ajouté(s) au panier.")
 
-    # Affichage et modification du panier
+    # Affichage panier
     if st.session_state.panier:
         st.subheader("Panier actuel (modifiable)")
         df_panier = pd.DataFrame(st.session_state.panier)
@@ -170,11 +154,12 @@ elif tab_choice == "💰 Enregistrer Vente":
 
         indices_a_supprimer = []
         for i, item in enumerate(st.session_state.panier):
-            col1, col2, col3 = st.columns([4,2,1])
+            col1, col2, col3 = st.columns([4, 2, 1])
             with col1:
                 st.write(item["Produit"])
             with col2:
-                nouvelle_quantite = st.number_input(f"Quantité {i}", min_value=1, value=item["Quantité"], key=f"qty_{i}")
+                nouvelle_quantite = st.number_input(f"Quantité {i}", min_value=1, value=item["Quantité"],
+                                                    key=f"qty_{i}")
                 st.session_state.panier[i]["Quantité"] = nouvelle_quantite
                 st.session_state.panier[i]["Total"] = nouvelle_quantite * item["Prix unitaire"]
             with col3:
@@ -185,31 +170,34 @@ elif tab_choice == "💰 Enregistrer Vente":
 
         st.markdown("---")
 
-        # Enregistrement des ventes
+        # Enregistrement de la vente
         if st.button("Enregistrer la vente", key="enregistrer_vente"):
+            df_stock = load_sheet("Stock")
+            df_ventes = load_sheet("Ventes")
             vente_valide = True
+
+            # Vérification stock
             for item in st.session_state.panier:
-                stock_dispo = df_stock[
-                    (df_stock['Marque'] == item["Marque"]) &
-                    (df_stock['Catégorie'] == item["Catégorie"]) &
-                    (df_stock['Famille'] == item["Famille"]) &
-                    (df_stock['Produit'] == item["Produit"])
-                ]['Quantité'].sum()
-                ventes_sum = df_ventes[
-                    (df_ventes['Marque'] == item["Marque"]) &
-                    (df_ventes['Catégorie'] == item["Catégorie"]) &
-                    (df_ventes['Famille'] == item["Famille"]) &
-                    (df_ventes['Produit'] == item["Produit"])
-                ]['Quantité'].sum() if not df_ventes.empty else 0
+                mask_stock = (
+                        (df_stock['Marque'] == item["Marque"]) &
+                        (df_stock['Catégorie'] == item["Catégorie"]) &
+                        (df_stock['Famille'] == item["Famille"]) &
+                        (df_stock['Produit'] == item["Produit"])
+                )
+                stock_dispo = df_stock.loc[mask_stock, 'Quantité'].sum() if not df_stock.empty else 0
+                ventes_sum = df_ventes[df_ventes['Produit'] == item["Produit"]][
+                    'Quantité'].sum() if not df_ventes.empty else 0
                 stock_reel = stock_dispo - ventes_sum
                 if item["Quantité"] > stock_reel:
                     st.error(f"Stock insuffisant pour {item['Produit']} ! Disponible : {stock_reel}")
                     vente_valide = False
 
             if vente_valide:
+                # Numéro de facture
                 prochain_num = ""
                 if generer_facture:
-                    factures_existantes = df_ventes[df_ventes["Numéro de facture"].notnull()] if not df_ventes.empty else pd.DataFrame()
+                    factures_existantes = df_ventes[
+                        df_ventes["Numéro de facture"].notnull()] if not df_ventes.empty else pd.DataFrame()
                     if not factures_existantes.empty:
                         numeros_valides = factures_existantes["Numéro de facture"].str.split("/").str[0]
                         numeros_valides = numeros_valides[numeros_valides.str.isnumeric()].astype(int)
@@ -224,7 +212,7 @@ elif tab_choice == "💰 Enregistrer Vente":
                 entreprise_nif = "NIF: 002316105204354"
                 entreprise_art = "ART: 002316300298344"
 
-                # Ajout ventes Google Sheet
+                # Enregistrer dans Google Sheet
                 for item in st.session_state.panier:
                     row_vente = [
                         str(datetime.now()), client_nom, client_email, client_tel,
@@ -246,10 +234,17 @@ elif tab_choice == "💰 Enregistrer Vente":
 elif tab_choice == "📦 État Stock":
     st.header("État du stock")
     df_stock = load_sheet("Stock")
+    df_ventes = load_sheet("Ventes")
     if not df_stock.empty:
-        df_stock.columns = df_stock.columns.str.strip()
         stock_reel = df_stock.groupby("Produit")["Quantité"].sum().reset_index()
-        st.dataframe(stock_reel[['Produit','Quantité']], use_container_width=True)
+        if not df_ventes.empty:
+            ventes_group = df_ventes.groupby("Produit")["Quantité"].sum().reset_index()
+            stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left", suffixes=('', '_vendu'))
+            stock_reel['Quantité_vendu'] = stock_reel['Quantité_vendu'].fillna(0)
+            stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_vendu']
+        else:
+            stock_reel['Stock restant'] = stock_reel['Quantité']
+        st.dataframe(stock_reel[['Produit', 'Stock restant']], use_container_width=True)
     else:
         st.write("Aucun stock enregistré.")
 
