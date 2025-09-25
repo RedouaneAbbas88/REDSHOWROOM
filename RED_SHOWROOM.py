@@ -67,7 +67,7 @@ if tab_choice == "🛒 Ajouter Stock":
     with st.form("form_stock"):
         produit_stock = st.selectbox("Produit", produits_dispo)
         quantite_stock = st.number_input("Quantité achetée", min_value=1, step=1)
-        prix_achat = st.number_input("Prix d'achat unitaire", min_value=0.0, step=1.0)
+        prix_achat = st.number_input("Prix d'achat unitaire", min_value=0.0, step=1.0,disabled=True)
         if st.form_submit_button("Ajouter au stock"):
             row = [str(datetime.now()), produit_stock, quantite_stock, prix_achat]
             spreadsheet.worksheet("Stock").append_row(row)
