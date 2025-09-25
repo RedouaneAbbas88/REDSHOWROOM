@@ -80,31 +80,47 @@ elif tab_choice == "💰 Enregistrer Vente":
     st.header("Enregistrer une vente multi-produits")
 
     with st.form("form_vente_multi"):
-        produit_vente = st.selectbox("Produit vendu", produits_dispo)
-        quantite_vente = st.number_input("Quantité vendue", min_value=1, step=1)
+        # Sélection produit et quantité
+        produit_vente = st.selectbox("Produit vendu *", produits_dispo)
+        quantite_vente = st.number_input("Quantité vendue *", min_value=1, step=1)
 
         # Infos client
-        client_nom = st.text_input("Nom du client")
+        client_nom = st.text_input("Nom du client *")
         client_email = st.text_input("Email du client")
-        client_tel = st.text_input("Téléphone du client")
+        client_tel = st.text_input("Téléphone du client *")
         client_rc = st.text_input("RC du client")
         client_nif = st.text_input("NIF du client")
         client_art = st.text_input("ART du client")
         client_adresse = st.text_input("Adresse du client")
 
+        # Option facture
         generer_facture = st.checkbox("Générer une facture PDF")
 
-        prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0]) if not df_produits.empty else 0.0
+        # Prix et total
+        prix_unitaire = float(
+            df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0]
+        ) if not df_produits.empty else 0.0
         total_vente = prix_unitaire * quantite_vente
-        st.write(f"Prix unitaire : {prix_unitaire} | Total HT : {total_vente:.2f} | Total TTC : {round(total_vente*1.19,2)}")
 
+        st.write(
+            f"Prix unitaire : {prix_unitaire} | "
+            f"Total HT : {total_vente:.2f} | "
+            f"Total TTC : {round(total_vente * 1.19, 2)}"
+        )
+
+        # Ajout au panier
         if st.form_submit_button("Ajouter au panier"):
-            st.session_state.panier.append({
-                "Produit": produit_vente,
-                "Quantité": quantite_vente,
-                "Prix unitaire": prix_unitaire,
-                "Total": total_vente
-            })
+            if not produit_vente or quantite_vente <= 0 or not client_nom.strip() or not client_tel.strip():
+                st.error("⚠️ Merci de remplir tous les champs obligatoires : Produit, Quantité, Nom du client et Téléphone.")
+            else:
+                st.session_state.panier.append({
+                    "Produit": produit_vente,
+                    "Quantité": quantite_vente,
+                    "Prix unitaire": prix_unitaire,
+                    "Total": total_vente
+                })
+                st.success(f"{quantite_vente} x {produit_vente} ajouté(s) au panier.")
+
 
     # Affichage du panier
     if st.session_state.panier:
