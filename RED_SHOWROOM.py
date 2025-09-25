@@ -59,7 +59,11 @@ st.session_state.active_tab = tabs_labels.index(tab_choice)
 # Fonction sélection hiérarchique
 # -----------------------------
 def selection_produit(df):
-    marques_dispo = df['Marque'].dropna().unique().tolist() if not df.empty else []
+    if df.empty:
+        st.error("La feuille Produits est vide !")
+        return "", "", "", "", 0.0
+
+    marques_dispo = df['Marque'].dropna().unique().tolist()
     marque_choisie = st.selectbox("Marque *", marques_dispo)
 
     categories_dispo = df[df['Marque'] == marque_choisie]['Catégorie'].dropna().unique().tolist()
@@ -71,7 +75,18 @@ def selection_produit(df):
     produits_dispo = df[(df['Marque'] == marque_choisie) & (df['Catégorie'] == categorie_choisie) & (df['Famille'] == famille_choisie)]['Produit'].dropna().tolist()
     produit_choisi = st.selectbox("Produit *", produits_dispo)
 
-    prix_unitaire = float(df[(df['Marque'] == marque_choisie) & (df['Catégorie'] == categorie_choisie) & (df['Famille'] == famille_choisie) & (df['Produit'] == produit_choisi)]['Prix unitaire'].values[0]) if not df.empty else 0.0
+    df_selection = df[(df['Marque'] == marque_choisie) &
+                      (df['Catégorie'] == categorie_choisie) &
+                      (df['Famille'] == famille_choisie) &
+                      (df['Produit'] == produit_choisi)]
+
+    if not df_selection.empty:
+        try:
+            prix_unitaire = float(df_selection['Prix unitaire'].values[0])
+        except (ValueError, TypeError, IndexError):
+            prix_unitaire = 0.0
+    else:
+        prix_unitaire = 0.0
 
     return marque_choisie, categorie_choisie, famille_choisie, produit_choisi, prix_unitaire
 
