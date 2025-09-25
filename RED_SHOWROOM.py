@@ -281,7 +281,7 @@ elif tab_choice == "📦 État Stock":
             ventes_group = df_ventes.groupby("Produit")["Quantité"].sum().reset_index()
             stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left", suffixes=('', '_vendu'))
             stock_reel['Quantité_vendu'] = stock_reel['Quantité_vendu'].fillna(0)
-            stock_reel['Stock restant'] = stock_reel['Quantité"] - stock_reel['Quantité_vendu']
+            stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_vendu']
         else:
             stock_reel['Stock restant'] = stock_reel['Quantité']
 
