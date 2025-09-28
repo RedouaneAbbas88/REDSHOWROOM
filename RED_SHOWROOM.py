@@ -76,15 +76,15 @@ if tab_choice == "🛒 Ajouter Stock":
 # -----------------------------
 elif tab_choice == "💰 Enregistrer Vente":
     st.header("Enregistrer une vente multi-produits")
-    with st.form("form_vente"):
-        # 1️⃣ Sélection du produit
+    with st.form("form_vente_multi"):
+        # Sélection produit
         produit_vente = st.selectbox("Produit vendu *", produits_dispo)
         prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0]) if not df_produits.empty else 0.0
 
-        # 2️⃣ Quantité
-        quantite_vente = int(st.number_input("Quantité vendue *", min_value=1, step=1))
+        # Quantité
+        quantite_vente = st.number_input("Quantité vendue *", min_value=1, step=1)
 
-        # 3️⃣ Infos client
+        # Infos client
         client_nom = st.text_input("Nom du client *")
         client_email = st.text_input("Email du client")
         client_tel = st.text_input("Téléphone du client *")
@@ -93,14 +93,21 @@ elif tab_choice == "💰 Enregistrer Vente":
         client_art = st.text_input("ART du client")
         client_adresse = st.text_input("Adresse du client")
 
-        total_ht = prix_unitaire * quantite_vente
-        total_ttc = round(total_ht * 1.19, 0)
+        # Calculs
+        total_ht = int(prix_unitaire * quantite_vente)
+        total_ttc = int(round(total_ht * 1.19, 0))
+        st.write(f"💰 Total TTC : {total_ttc} DA")
 
-        # Interface simplifiée
-        st.write(f"**Total TTC : {total_ttc:.0f} DA**")
-        montant_paye_input = st.number_input("Montant payé par le client", min_value=0, max_value=total_ttc, step=1)
-        reste_a_payer = total_ttc - montant_paye_input
-        st.write(f"**Reste à payer : {reste_a_payer:.0f} DA**")
+        # Montant payé
+        montant_paye = st.number_input(
+            "Montant payé par le client",
+            min_value=0,
+            max_value=total_ttc,
+            value=0,
+            step=1
+        )
+        reste_a_payer = total_ttc - montant_paye
+        st.write(f"Reste à payer : {reste_a_payer} DA")
 
         generer_facture = st.checkbox("Générer une facture PDF")
 
@@ -114,7 +121,7 @@ elif tab_choice == "💰 Enregistrer Vente":
                     "Prix unitaire": prix_unitaire,
                     "Total HT": total_ht,
                     "Total TTC": total_ttc,
-                    "Montant payé": montant_paye_input,
+                    "Montant payé": montant_paye,
                     "Reste à payer": reste_a_payer
                 })
                 st.success(f"{quantite_vente} x {produit_vente} ajouté(s) au panier.")
@@ -125,6 +132,7 @@ elif tab_choice == "💰 Enregistrer Vente":
         df_panier = pd.DataFrame(st.session_state.panier)
         st.dataframe(df_panier, use_container_width=True, hide_index=True)
 
+        # Gestion modification et suppression
         indices_a_supprimer = []
         for i, item in enumerate(st.session_state.panier):
             col1, col2, col3 = st.columns([4, 2, 1])
@@ -133,20 +141,21 @@ elif tab_choice == "💰 Enregistrer Vente":
             with col2:
                 nouvelle_quantite = st.number_input(f"Qté {i}", min_value=1, value=item["Quantité"], key=f"qty_{i}")
                 st.session_state.panier[i]["Quantité"] = nouvelle_quantite
-                st.session_state.panier[i]["Total HT"] = nouvelle_quantite * item["Prix unitaire"]
-                st.session_state.panier[i]["Total TTC"] = round(st.session_state.panier[i]["Total HT"] * 1.19, 0)
+                st.session_state.panier[i]["Total HT"] = int(nouvelle_quantite * item["Prix unitaire"])
+                st.session_state.panier[i]["Total TTC"] = int(round(st.session_state.panier[i]["Total HT"] * 1.19, 0))
             with col3:
                 if st.button("❌ Supprimer", key=f"del_{i}"):
                     indices_a_supprimer.append(i)
         for index in sorted(indices_a_supprimer, reverse=True):
             st.session_state.panier.pop(index)
 
-        # Enregistrer la vente et générer facture
+        # Enregistrer la vente et générer PDF
         if st.button("Enregistrer la vente", key="enregistrer_vente"):
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
             vente_valide = True
 
+            # Vérification stock
             for item in st.session_state.panier:
                 stock_dispo = df_stock[df_stock['Produit'] == item["Produit"]]['Quantité'].sum()
                 ventes_sum = df_ventes[df_ventes['Produit'] == item["Produit"]]['Quantité'].sum() if not df_ventes.empty else 0
@@ -156,7 +165,7 @@ elif tab_choice == "💰 Enregistrer Vente":
                     vente_valide = False
 
             if vente_valide:
-                # Numéro facture
+                # Numéro de facture
                 prochain_num = ""
                 if generer_facture:
                     factures_existantes = df_ventes[df_ventes["Numéro de facture"].notnull()] if not df_ventes.empty else pd.DataFrame()
@@ -206,28 +215,28 @@ elif tab_choice == "💰 Enregistrer Vente":
                     pdf.cell(30, 10, "Prix HT", 1)
                     pdf.cell(30, 10, "Total HT", 1)
                     pdf.cell(30, 10, "Total TTC", 1, ln=True)
-                    total_ht, total_ttc, total_paye = 0, 0, 0
+                    total_ht_sum, total_ttc_sum, total_paye_sum = 0, 0, 0
                     for item in st.session_state.panier:
-                        total_ht += item["Total HT"]
-                        total_ttc += item["Total TTC"]
-                        total_paye += item["Montant payé"]
+                        total_ht_sum += item["Total HT"]
+                        total_ttc_sum += item["Total TTC"]
+                        total_paye_sum += item["Montant payé"]
                         pdf.cell(60, 10, item["Produit"], 1)
                         pdf.cell(20, 10, str(item["Quantité"]), 1)
-                        pdf.cell(30, 10, f"{item['Prix unitaire']:.2f}", 1)
-                        pdf.cell(30, 10, f"{item['Total HT']:.2f}", 1)
-                        pdf.cell(30, 10, f"{item['Total TTC']:.2f}", 1, ln=True)
-                    total_reste = total_ttc - total_paye
+                        pdf.cell(30, 10, f"{item['Prix unitaire']}", 1)
+                        pdf.cell(30, 10, f"{item['Total HT']}", 1)
+                        pdf.cell(30, 10, f"{item['Total TTC']}", 1, ln=True)
+                    total_reste = total_ttc_sum - total_paye_sum
                     pdf.cell(140, 10, "Total HT:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_ht:.2f}", 1, ln=True)
+                    pdf.cell(30, 10, f"{total_ht_sum}", 1, ln=True)
                     pdf.cell(140, 10, "Total TVA 19%:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_ttc - total_ht:.2f}", 1, ln=True)
+                    pdf.cell(30, 10, f"{total_ttc_sum - total_ht_sum}", 1, ln=True)
                     pdf.cell(140, 10, "Total TTC:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_ttc:.2f}", 1, ln=True)
+                    pdf.cell(30, 10, f"{total_ttc_sum}", 1, ln=True)
                     pdf.cell(140, 10, "Montant payé:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_paye:.2f}", 1, ln=True)
+                    pdf.cell(30, 10, f"{total_paye_sum}", 1, ln=True)
                     pdf.cell(140, 10, "Reste à payer:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_reste:.2f}", 1, ln=True)
-                    montant_lettres = num2words(int(total_ttc), lang='fr') + " dinars algériens"
+                    pdf.cell(30, 10, f"{total_reste}", 1, ln=True)
+                    montant_lettres = num2words(int(total_ttc_sum), lang='fr') + " dinars algériens"
                     pdf.ln(10)
                     pdf.set_font("Arial", 'I', 11)
                     pdf.multi_cell(0, 10, f"Arrêté la présente facture à la somme de : {montant_lettres}")
@@ -245,33 +254,48 @@ elif tab_choice == "💰 Enregistrer Vente":
 elif tab_choice == "📦 État Stock":
     st.header("État du stock")
     df_stock = load_sheet("Stock")
+    df_ventes = load_sheet("Ventes")
     if not df_stock.empty:
-        st.dataframe(df_stock, use_container_width=True)
+        stock_reel = df_stock.groupby("Produit")["Quantité"].sum().reset_index()
+        if not df_ventes.empty:
+            ventes_group = df_ventes.groupby("Produit")["Quantité"].sum().reset_index()
+            stock_reel = stock_reel.merge(ventes_group, on="Produit", how="left", suffixes=('', '_vendu'))
+            stock_reel['Quantité_vendu'] = stock_reel['Quantité_vendu'].fillna(0)
+            stock_reel['Stock restant'] = stock_reel['Quantité'] - stock_reel['Quantité_vendu']
+        else:
+            stock_reel['Stock restant'] = stock_reel['Quantité']
+        st.dataframe(stock_reel[['Produit', 'Stock restant']], use_container_width=True)
     else:
-        st.info("Aucun stock disponible.")
+        st.write("Aucun stock enregistré.")
 
 # -----------------------------
 # Onglet 4 : Historique Ventes
 # -----------------------------
 elif tab_choice == "📄 Historique Ventes":
     st.header("Historique des ventes")
-    df_ventes = load_sheet("Ventes")
+    try:
+        sheet_ventes = spreadsheet.worksheet("Ventes")
+        data_ventes = sheet_ventes.get_all_records()
+        df_ventes = pd.DataFrame(data_ventes)
+    except Exception as e:
+        st.error(f"Erreur lors du chargement des ventes : {e}")
+        df_ventes = pd.DataFrame()
     if not df_ventes.empty:
         st.dataframe(df_ventes, use_container_width=True)
     else:
-        st.info("Aucune vente enregistrée.")
+        st.write("Aucune vente enregistrée.")
 
 # -----------------------------
 # Onglet 5 : Paiements partiels
 # -----------------------------
 elif tab_choice == "💳 Paiements partiels":
-    st.header("Gestion des paiements partiels")
+    st.header("État des paiements partiels")
     df_ventes = load_sheet("Ventes")
     if not df_ventes.empty:
-        df_impayes = df_ventes[df_ventes["Reste à payer"] > 0]
-        if not df_impayes.empty:
-            st.dataframe(df_impayes, use_container_width=True)
+        df_partiels = df_ventes[df_ventes["Reste à payer"] > 0]
+        if not df_partiels.empty:
+            st.dataframe(df_partiels[["Produit", "Nom", "Montant payé", "Reste à payer"]], use_container_width=True)
         else:
-            st.info("Aucun paiement partiel en cours.")
+            st.write("Aucun paiement partiel en cours.")
     else:
-        st.info("Aucune vente enregistrée.")
+        st.write("Aucune vente enregistrée.")
