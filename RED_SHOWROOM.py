@@ -26,7 +26,6 @@ client = gspread.authorize(creds)
 SPREADSHEET_ID = "1r4xnyKDaY6jzYGLUORKHlPeGKMCCLkkIx_XvSkIobhc"
 spreadsheet = client.open_by_key(SPREADSHEET_ID)
 
-
 # -----------------------------
 # 🔹 Charger une feuille
 # -----------------------------
@@ -39,7 +38,6 @@ def load_sheet(sheet_name):
     except Exception as e:
         st.error(f"Erreur lors du chargement de la feuille '{sheet_name}': {e}")
         return pd.DataFrame()
-
 
 # -----------------------------
 # 🔹 Données initiales
@@ -59,7 +57,6 @@ if "panier" not in st.session_state:
 tab_choice = st.radio("Choisir l'onglet", tabs_labels, index=st.session_state.active_tab)
 st.session_state.active_tab = tabs_labels.index(tab_choice)
 
-
 # -----------------------------
 # Onglet 1 : Ajouter Stock
 # -----------------------------
@@ -74,7 +71,6 @@ if tab_choice == "🛒 Ajouter Stock":
             row = [str(datetime.now()), produit_stock, quantite_stock, prix_achat]
             spreadsheet.worksheet("Stock").append_row(row)
             st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
-
 
 # -----------------------------
 # Onglet 2 : Enregistrer Vente
@@ -101,15 +97,15 @@ elif tab_choice == "💰 Enregistrer Vente":
 
     # 🔹 Calculs automatiques
     total_ht = prix_unitaire * quantite_vente
-    total_ttc = round(total_ht * 1.19, 2)
+    total_ttc = total_ht * 1.19
 
-    st.write(f"💰 Prix unitaire : **{prix_unitaire:.2f}**")
-    st.write(f"📦 Total HT : **{total_ht:.2f}**")
-    st.write(f"🧾 Total TTC : **{total_ttc:.2f}**")
+    st.write(f"💰 Prix unitaire : **{prix_unitaire:,.2f}** DA")
+    st.write(f"📦 Total HT : **{total_ht:,.2f}** DA")
+    st.write(f"🧾 Total TTC : **{total_ttc:,.2f}** DA")
 
     montant_paye = st.number_input("Montant payé par le client", min_value=0.0, max_value=total_ttc, step=1.0, key="montant_paye")
     reste_a_payer = round(total_ttc - montant_paye, 2)
-    st.write(f"💳 Reste à payer : **{reste_a_payer:.2f}**")
+    st.write(f"💳 Reste à payer : **{reste_a_payer:,.2f}** DA")
 
     generer_facture = st.checkbox("Générer une facture PDF", key="generer_facture")
 
@@ -123,6 +119,8 @@ elif tab_choice == "💰 Enregistrer Vente":
                 "Quantité": quantite_vente,
                 "Prix unitaire": prix_unitaire,
                 "Total": total_ht,
+                "Prix TTC": round(prix_unitaire * 1.19, 2),
+                "Total TTC": round(total_ht * 1.19, 2),
                 "Montant payé": montant_paye,
                 "Reste à payer": reste_a_payer
             })
@@ -132,6 +130,8 @@ elif tab_choice == "💰 Enregistrer Vente":
     if st.session_state.panier:
         st.subheader("Panier actuel")
         df_panier = pd.DataFrame(st.session_state.panier)
+        df_panier["Prix TTC"] = df_panier["Prix TTC"].map(lambda x: f"{x:,.2f}")
+        df_panier["Total TTC"] = df_panier["Total TTC"].map(lambda x: f"{x:,.2f}")
         st.dataframe(df_panier, use_container_width=True, hide_index=True)
 
         # Modifier / supprimer
@@ -144,6 +144,7 @@ elif tab_choice == "💰 Enregistrer Vente":
                 nouvelle_quantite = st.number_input(f"Qté {i}", min_value=1, value=item["Quantité"], key=f"qty_{i}")
                 st.session_state.panier[i]["Quantité"] = nouvelle_quantite
                 st.session_state.panier[i]["Total"] = nouvelle_quantite * item["Prix unitaire"]
+                st.session_state.panier[i]["Total TTC"] = round(st.session_state.panier[i]["Total"] * 1.19, 2)
             with col3:
                 if st.button("❌ Supprimer", key=f"del_{i}"):
                     indices_a_supprimer.append(i)
@@ -226,22 +227,22 @@ elif tab_choice == "💰 Enregistrer Vente":
                         total_paye += item["Montant payé"]
                         pdf.cell(60, 10, item["Produit"], 1)
                         pdf.cell(20, 10, str(item["Quantité"]), 1)
-                        pdf.cell(30, 10, f"{item['Prix unitaire']:.2f}", 1)
-                        pdf.cell(30, 10, f"{item['Total']:.2f}", 1)
-                        pdf.cell(30, 10, f"{item['Total'] * 1.19:.2f}", 1, ln=True)
+                        pdf.cell(30, 10, f"{item['Prix unitaire']:,.2f}", 1)
+                        pdf.cell(30, 10, f"{item['Total']:,.2f}", 1)
+                        pdf.cell(30, 10, f"{item['Total TTC']:,.2f}", 1, ln=True)
 
                     # Totaux
                     total_reste = total_ttc - total_paye
                     pdf.cell(140, 10, "Total HT:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_ht:.2f}", 1, ln=True)
+                    pdf.cell(30, 10, f"{total_ht:,.2f}", 1, ln=True)
                     pdf.cell(140, 10, "Total TVA 19%:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_ttc - total_ht:.2f}", 1, ln=True)
+                    pdf.cell(30, 10, f"{total_ttc - total_ht:,.2f}", 1, ln=True)
                     pdf.cell(140, 10, "Total TTC:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_ttc:.2f}", 1, ln=True)
+                    pdf.cell(30, 10, f"{total_ttc:,.2f}", 1, ln=True)
                     pdf.cell(140, 10, "Montant payé:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_paye:.2f}", 1, ln=True)
+                    pdf.cell(30, 10, f"{total_paye:,.2f}", 1, ln=True)
                     pdf.cell(140, 10, "Reste à payer:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_reste:.2f}", 1, ln=True)
+                    pdf.cell(30, 10, f"{total_reste:,.2f}", 1, ln=True)
 
                     # Montant en lettres
                     montant_lettres = num2words(int(total_ttc), lang='fr') + " dinars algériens"
@@ -256,7 +257,6 @@ elif tab_choice == "💰 Enregistrer Vente":
 
                 st.success(f"Vente enregistrée pour {client_nom} avec {len(st.session_state.panier)} produits.")
                 st.session_state.panier = []
-
 
 # -----------------------------
 # Onglet 3 : État Stock
@@ -278,7 +278,6 @@ elif tab_choice == "📦 État Stock":
     else:
         st.write("Aucun stock enregistré.")
 
-
 # -----------------------------
 # Onglet 4 : Historique Ventes
 # -----------------------------
@@ -295,7 +294,6 @@ elif tab_choice == "📄 Historique Ventes":
         st.dataframe(df_ventes, use_container_width=True)
     else:
         st.write("Aucune vente enregistrée.")
-
 
 # -----------------------------
 # Onglet 5 : Paiements partiels
