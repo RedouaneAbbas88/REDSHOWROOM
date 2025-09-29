@@ -120,14 +120,7 @@ elif tab_choice == "💰 Enregistrer Vente":
                 "Total HT": total_ht,
                 "Total TTC": total_ttc,
                 "Montant payé": montant_paye,
-                "Reste à payer": reste_a_payer,
-                "Client Nom": client_nom,
-                "Client Email": client_email,
-                "Client Tel": client_tel,
-                "Client RC": client_rc,
-                "Client NIF": client_nif,
-                "Client ART": client_art,
-                "Client Adresse": client_adresse
+                "Reste à payer": reste_a_payer
             })
             st.success(f"{quantite_vente} x {produit_vente} ajouté(s) au panier.")
 
