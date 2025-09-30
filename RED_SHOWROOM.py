@@ -77,9 +77,7 @@ if tab_choice == "🛒 Ajouter Stock":
 elif tab_choice == "💰 Enregistrer Vente":
     st.header("Enregistrer une vente multi-produits")
 
-    # -------------------------------
     # Sélection produit et quantité
-    # -------------------------------
     produit_vente = st.selectbox("Produit vendu *", produits_dispo)
     if produit_vente:
         prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0])
@@ -93,9 +91,7 @@ elif tab_choice == "💰 Enregistrer Vente":
     total_ttc = int(round(total_ht * 1.19, 0))
     st.write(f"Prix unitaire : {prix_unitaire} DA | 💰 Total TTC : {total_ttc} DA")
 
-    # -------------------------------
     # Infos client
-    # -------------------------------
     client_nom = st.text_input("Nom du client *")
     client_email = st.text_input("Email du client")
     client_tel = st.text_input("Téléphone du client *")
@@ -141,6 +137,7 @@ elif tab_choice == "💰 Enregistrer Vente":
         df_panier = pd.DataFrame(st.session_state.panier)
         st.dataframe(df_panier[['Produit', 'Quantité', 'Prix unitaire', 'Total HT', 'Total TTC', 'Montant payé', 'Reste à payer']], use_container_width=True, hide_index=True)
 
+        # Suppression & modification quantité
         indices_a_supprimer = []
         for i, item in enumerate(st.session_state.panier):
             col1, col2, col3 = st.columns([4, 2, 1])
@@ -158,7 +155,9 @@ elif tab_choice == "💰 Enregistrer Vente":
         for index in sorted(indices_a_supprimer, reverse=True):
             st.session_state.panier.pop(index)
 
-        # Enregistrer la vente et générer PDF
+        # -------------------------------
+        # Enregistrer la vente et PDF
+        # -------------------------------
         if st.button("Enregistrer la vente"):
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
@@ -174,7 +173,7 @@ elif tab_choice == "💰 Enregistrer Vente":
                     vente_valide = False
 
             if vente_valide:
-                # Numéro de facture
+                # Numéro facture
                 prochain_num = ""
                 if generer_facture:
                     factures_existantes = df_ventes[df_ventes["Numéro de facture"].notnull()] if not df_ventes.empty else pd.DataFrame()
@@ -204,7 +203,9 @@ elif tab_choice == "💰 Enregistrer Vente":
                     ]
                     spreadsheet.worksheet("Ventes").append_row(row_vente)
 
-                # Génération PDF
+                # -------------------------------
+                # Génération Facture PDF
+                # -------------------------------
                 if generer_facture:
                     pdf = FPDF()
                     pdf.add_page()
@@ -254,6 +255,41 @@ elif tab_choice == "💰 Enregistrer Vente":
                     st.download_button(label="📥 Télécharger la facture", data=pdf_io,
                                        file_name=f"facture_{client_nom}_{prochain_num}.pdf", mime="application/pdf")
 
+                # -------------------------------
+                # Génération Bon de Vente PDF
+                # -------------------------------
+                pdf_bon = FPDF()
+                pdf_bon.add_page()
+                pdf_bon.set_font("Arial", 'B', 14)
+                pdf_bon.cell(200, 10, txt="Bon de Vente", ln=True, align="C")
+                pdf_bon.ln(10)
+                pdf_bon.set_font("Arial", size=12)
+                pdf_bon.cell(200, 10, txt=f"Client : {client_nom}", ln=True)
+                pdf_bon.cell(200, 10, txt=f"Téléphone : {client_tel}", ln=True)
+                pdf_bon.ln(5)
+                pdf_bon.set_font("Arial", 'B', 12)
+                pdf_bon.cell(80, 10, "Produit", 1)
+                pdf_bon.cell(30, 10, "Qté", 1)
+                pdf_bon.cell(40, 10, "Prix TTC", 1)
+                pdf_bon.cell(40, 10, "Total TTC", 1, ln=True)
+                total_ttc_global = 0
+                pdf_bon.set_font("Arial", size=12)
+                for item in st.session_state.panier:
+                    total_ttc_global += item["Total TTC"]
+                    pdf_bon.cell(80, 10, item["Produit"], 1)
+                    pdf_bon.cell(30, 10, str(item["Quantité"]), 1)
+                    pdf_bon.cell(40, 10, f"{item['Total TTC'] / item['Quantité']:.2f}", 1)
+                    pdf_bon.cell(40, 10, f"{item['Total TTC']:.2f}", 1, ln=True)
+                pdf_bon.set_font("Arial", 'B', 12)
+                pdf_bon.cell(150, 10, "TOTAL TTC", 1)
+                pdf_bon.cell(40, 10, f"{total_ttc_global:.2f}", 1, ln=True)
+                pdf_bon_bytes = pdf_bon.output(dest='S').encode('latin1')
+                pdf_bon_io = io.BytesIO(pdf_bon_bytes)
+                st.download_button(label="📑 Télécharger le bon de vente",
+                                   data=pdf_bon_io,
+                                   file_name=f"bon_vente_{client_nom}.pdf",
+                                   mime="application/pdf")
+
                 st.success(f"Vente enregistrée pour {client_nom} avec {len(st.session_state.panier)} produits.")
                 st.session_state.panier = []
 
@@ -297,8 +333,8 @@ elif tab_choice == "💳 Paiements partiels":
     if not df_ventes.empty:
         df_partiels = df_ventes[df_ventes["Reste à payer"] > 0]
         if not df_partiels.empty:
-            st.dataframe(df_partiels[["Produit", "Nom", "Montant payé", "Reste à payer"]], use_container_width=True)
+            st.dataframe(df_partiels[["Produit", "Nom du client", "Téléphone", "Total TTC", "Montant payé", "Reste à payer"]], use_container_width=True)
         else:
-            st.write("Aucun paiement partiel en cours.")
+            st.write("Aucun paiement partiel en attente.")
     else:
         st.write("Aucune vente enregistrée.")
