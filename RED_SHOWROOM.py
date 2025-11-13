@@ -77,7 +77,6 @@ if tab_choice == "🛒 Ajouter Stock":
 elif tab_choice == "💰 Enregistrer Vente":
     st.header("Enregistrer une vente multi-produits")
 
-    # Sélection produit et quantité
     produit_vente = st.selectbox("Produit vendu *", produits_dispo)
     if produit_vente:
         prix_unitaire = float(df_produits.loc[df_produits['Produit'] == produit_vente, 'Prix unitaire'].values[0])
@@ -85,8 +84,6 @@ elif tab_choice == "💰 Enregistrer Vente":
         prix_unitaire = 0.0
 
     quantite_vente = st.number_input("Quantité vendue *", min_value=1, step=1)
-
-    # Calcul dynamique
     total_ht = prix_unitaire * quantite_vente
     total_ttc = int(round(total_ht * 1.19, 0))
     st.write(f"Prix unitaire : {prix_unitaire} DA | 💰 Total TTC : {total_ttc} DA")
@@ -100,7 +97,6 @@ elif tab_choice == "💰 Enregistrer Vente":
     client_art = st.text_input("ART du client")
     client_adresse = st.text_input("Adresse du client")
 
-    # Montant payé
     montant_paye = st.number_input("Montant payé par le client", min_value=0, max_value=total_ttc, value=0, step=1)
     reste_a_payer = total_ttc - montant_paye
     st.write(f"Reste à payer : {reste_a_payer} DA")
@@ -137,7 +133,6 @@ elif tab_choice == "💰 Enregistrer Vente":
         df_panier = pd.DataFrame(st.session_state.panier)
         st.dataframe(df_panier[['Produit', 'Quantité', 'Prix unitaire', 'Total HT', 'Total TTC', 'Montant payé', 'Reste à payer']], use_container_width=True, hide_index=True)
 
-        # Suppression & modification quantité
         indices_a_supprimer = []
         for i, item in enumerate(st.session_state.panier):
             col1, col2, col3 = st.columns([4, 2, 1])
@@ -163,7 +158,6 @@ elif tab_choice == "💰 Enregistrer Vente":
             df_ventes = load_sheet("Ventes")
             vente_valide = True
 
-            # Vérification stock
             for item in st.session_state.panier:
                 stock_dispo = df_stock[df_stock['Produit'] == item["Produit"]]['Quantité'].sum()
                 ventes_sum = df_ventes[df_ventes['Produit'] == item["Produit"]]['Quantité'].sum() if not df_ventes.empty else 0
@@ -173,7 +167,6 @@ elif tab_choice == "💰 Enregistrer Vente":
                     vente_valide = False
 
             if vente_valide:
-                # Numéro facture
                 prochain_num = ""
                 if generer_facture:
                     factures_existantes = df_ventes[df_ventes["Numéro de facture"].notnull()] if not df_ventes.empty else pd.DataFrame()
@@ -191,7 +184,6 @@ elif tab_choice == "💰 Enregistrer Vente":
                 entreprise_nif = "NIF: 002316105204354"
                 entreprise_art = "ART: 002316300298344"
 
-                # Enregistrement Google Sheet
                 for item in st.session_state.panier:
                     row_vente = [
                         str(datetime.now()), item["Client Nom"], item["Client Email"], item["Client Tel"],
@@ -204,66 +196,17 @@ elif tab_choice == "💰 Enregistrer Vente":
                     spreadsheet.worksheet("Ventes").append_row(row_vente)
 
                 # -------------------------------
-                # Génération Facture PDF
-                # -------------------------------
-                if generer_facture:
-                    pdf = FPDF()
-                    pdf.add_page()
-                    pdf.set_font("Arial", 'B', 14)
-                    pdf.cell(200, 10, txt=f"Facture Num : {prochain_num}", ln=True, align="C")
-                    pdf.ln(5)
-                    pdf.set_font("Arial", size=12)
-                    pdf.cell(200, 5, txt=f"{entreprise_nom}", ln=True)
-                    pdf.cell(200, 5, txt=f"{entreprise_adresse}", ln=True)
-                    pdf.cell(200, 5, txt=f"{entreprise_rc} | {entreprise_nif} | {entreprise_art}", ln=True)
-                    pdf.ln(5)
-                    pdf.cell(200, 5, txt=f"Client: {item['Client Nom']}", ln=True)
-                    pdf.cell(200, 5, txt=f"Email: {item['Client Email']} | Tel: {item['Client Tel']}", ln=True)
-                    pdf.ln(5)
-                    pdf.cell(60, 10, "Produit", 1)
-                    pdf.cell(20, 10, "Qté", 1)
-                    pdf.cell(30, 10, "Prix HT", 1)
-                    pdf.cell(30, 10, "Total HT", 1)
-                    pdf.cell(30, 10, "Total TTC", 1, ln=True)
-                    total_ht_sum, total_ttc_sum, total_paye_sum = 0, 0, 0
-                    for item in st.session_state.panier:
-                        total_ht_sum += item["Total HT"]
-                        total_ttc_sum += item["Total TTC"]
-                        total_paye_sum += item["Montant payé"]
-                        pdf.cell(60, 10, item["Produit"], 1)
-                        pdf.cell(20, 10, str(item["Quantité"]), 1)
-                        pdf.cell(30, 10, f"{item['Prix unitaire']:.2f}", 1)
-                        pdf.cell(30, 10, f"{item['Total HT']:.2f}", 1)
-                        pdf.cell(30, 10, f"{item['Total TTC']:.2f}", 1, ln=True)
-                    total_reste_sum = total_ttc_sum - total_paye_sum
-                    pdf.cell(140, 10, "Total HT:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_ht_sum:.2f}", 1, ln=True)
-                    pdf.cell(140, 10, "Total TVA 19%:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_ttc_sum - total_ht_sum:.2f}", 1, ln=True)
-                    pdf.cell(140, 10, "Total TTC:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_ttc_sum:.2f}", 1, ln=True)
-                    pdf.cell(140, 10, "Montant payé:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_paye_sum:.2f}", 1, ln=True)
-                    pdf.cell(140, 10, "Reste à payer:", 0, align="R")
-                    pdf.cell(30, 10, f"{total_reste_sum:.2f}", 1, ln=True)
-                    montant_lettres = num2words(int(total_ttc_sum), lang='fr') + " dinars algériens"
-                    pdf.ln(10)
-                    pdf.set_font("Arial", 'I', 11)
-                    pdf.multi_cell(0, 10, f"Arrêté la présente facture à la somme de : {montant_lettres}")
-                    pdf_bytes = pdf.output(dest='S').encode('latin1')
-                    pdf_io = io.BytesIO(pdf_bytes)
-                    st.download_button(label="📥 Télécharger la facture", data=pdf_io,
-                                       file_name=f"facture_{client_nom}_{prochain_num}.pdf", mime="application/pdf")
-
-                # -------------------------------
-                # Génération Bon de Vente PDF
+                # Bon de Vente PDF avec date + société
                 # -------------------------------
                 pdf_bon = FPDF()
                 pdf_bon.add_page()
+                pdf_bon.set_font("Arial", 'B', 16)
+                pdf_bon.cell(200, 10, txt=entreprise_nom, ln=True, align="C")
                 pdf_bon.set_font("Arial", 'B', 14)
                 pdf_bon.cell(200, 10, txt="Bon de Vente", ln=True, align="C")
-                pdf_bon.ln(10)
                 pdf_bon.set_font("Arial", size=12)
+                pdf_bon.cell(200, 10, txt=f"Date : {datetime.now().strftime('%d/%m/%Y')}", ln=True, align="R")
+                pdf_bon.ln(10)
                 pdf_bon.cell(200, 10, txt=f"Client : {client_nom}", ln=True)
                 pdf_bon.cell(200, 10, txt=f"Téléphone : {client_tel}", ln=True)
                 pdf_bon.ln(5)
