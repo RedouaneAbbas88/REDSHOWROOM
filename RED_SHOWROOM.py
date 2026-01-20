@@ -303,7 +303,11 @@ elif tab_choice == "🧾 Charges quotidiennes":
 
     # Formulaire ligne de charge
     with st.form("form_ligne_charge"):
-        date_charge = st.date_input("Date", value=datetime.today())
+        date_charge = st.date_input(
+    "Date",
+    value=datetime.today(),
+    min_value=datetime.today()  # Empêche de choisir une date passée
+)
         type_charge = st.selectbox("Type de charge *", types_dispo)
         description = st.text_input("Description *")
         montant = st.number_input("Montant (DA) *", min_value=0, step=100)
