@@ -299,7 +299,7 @@ elif tab_choice == "🧾 Charges quotidiennes":
     # Fonction pour charger les types depuis Google Sheets
     # -----------------------------
     def load_types_charges():
-        sheet = spreadsheet.worksheet("types_charges")  # Feuille source
+        sheet = spreadsheet.worksheet("Types_Charges")  # Feuille source
         header = sheet.row_values(1)  # Ligne d'en-tête
         try:
             col_index = header.index("Type de charge") + 1  # +1 car Google Sheets commence à 1
