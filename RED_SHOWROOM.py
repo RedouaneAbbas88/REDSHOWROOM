@@ -423,7 +423,7 @@ elif tab_choice == "🧾 Charges quotidiennes":
             pdf.cell(50, 10, "Type", 1)
             pdf.cell(70, 10, "Description", 1)
             pdf.cell(40, 10, "Fournisseur", 1)
-            pdf.cell(30, 10, "Montant (DA)", 1, ln=True)
+            pdf.cell(30, 10, "Montant", 1, ln=True)
 
             pdf.set_font("Arial", size=12)
             for line in st.session_state.charges_panier:
