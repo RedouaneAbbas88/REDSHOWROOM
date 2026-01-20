@@ -298,7 +298,7 @@ elif tab_choice == "🧾 Charges quotidiennes":
             total = 0
             for row in data:
                 try:
-                    valeur = str(row["Montant (DA)"]) \
+                    valeur = str(row["Montant"]) \
                         .replace(" ", "") \
                         .replace(",", ".") \
                         .replace("DA", "") \
@@ -358,7 +358,7 @@ elif tab_choice == "🧾 Charges quotidiennes":
         type_charge = st.selectbox("Type de charge *", types_dispo)
         description = st.text_input("Description *")
         fournisseur = st.text_input("Fournisseur / Prestataire")
-        montant = st.number_input("Montant (DA) *", min_value=0, step=100)
+        montant = st.number_input(" Montant *", min_value=0, step=100)
 
         add_line = st.form_submit_button("➕ Ajouter la ligne")
 
@@ -375,7 +375,7 @@ elif tab_choice == "🧾 Charges quotidiennes":
                 "Type de charge": type_charge,
                 "Description": description,
                 "Fournisseur / Prestataire": fournisseur,
-                "Montant (DA)": montant
+                "Montant": montant
             })
             st.success("Ligne ajoutée.")
 
@@ -403,7 +403,7 @@ elif tab_choice == "🧾 Charges quotidiennes":
                     line["Type de charge"],
                     line["Description"],
                     line["Fournisseur / Prestataire"],
-                    line["Montant (DA)"]
+                    line["Montant"]
                 ]
                 sheet.append_row(row)
 
@@ -430,7 +430,7 @@ elif tab_choice == "🧾 Charges quotidiennes":
                 pdf.cell(50, 10, line["Type de charge"], 1)
                 pdf.cell(70, 10, line["Description"], 1)
                 pdf.cell(40, 10, line["Fournisseur / Prestataire"], 1)
-                pdf.cell(30, 10, str(line["Montant (DA)"]), 1, ln=True)
+                pdf.cell(30, 10, str(line["Montant"]), 1, ln=True)
 
             pdf.set_font("Arial", 'B', 12)
             pdf.cell(160, 10, "TOTAL", 1)
