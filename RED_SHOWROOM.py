@@ -325,6 +325,7 @@ elif tab_choice == "🧾 Charges quotidiennes":
         )
         type_charge = st.selectbox("Type de charge *", types_dispo)
         description = st.text_input("Description *")
+        fournisseur = st.text_input("Fournisseur / Prestataire")  # <- Nouveau champ
         montant = st.number_input("Montant (DA) *", min_value=0, step=100)
 
         add_line = st.form_submit_button("➕ Ajouter la ligne")
@@ -338,6 +339,7 @@ elif tab_choice == "🧾 Charges quotidiennes":
                 "Date": str(date_charge),
                 "Type de charge": type_charge,
                 "Description": description,
+                "Fournisseur / Prestataire": fournisseur,  # <- Nouveau champ
                 "Montant (DA)": montant
             })
             st.success("Ligne ajoutée.")
