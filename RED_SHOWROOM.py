@@ -295,19 +295,34 @@ elif tab_choice == "🧾 Charges quotidiennes":
     ref_charge = f"CHG-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     st.info(f"📌 Référence du document : {ref_charge}")
 
-    # Charger les types depuis Google Sheets
-    try:
-        types_dispo = load_types_charges()
-    except:
-        types_dispo = ["Autre"]
+    # -----------------------------
+    # Fonction pour charger les types depuis Google Sheets
+    # -----------------------------
+    def load_types_charges():
+        sheet = spreadsheet.worksheet("types_charges")  # Feuille source
+        header = sheet.row_values(1)  # Ligne d'en-tête
+        try:
+            col_index = header.index("Type de charge") + 1  # +1 car Google Sheets commence à 1
+        except ValueError:
+            st.error("La colonne 'Type de charge' est introuvable dans la feuille types_charges.")
+            return ["Autre"]
+        values = sheet.col_values(col_index)[1:]  # Ignorer l'en-tête
+        types = [v for v in values if v.strip()]
+        return types if types else ["Autre"]
 
+    # Charger les types
+    types_dispo = load_types_charges()
+    st.write("Types disponibles:", types_dispo)  # Affichage pour debug
+
+    # -----------------------------
     # Formulaire ligne de charge
+    # -----------------------------
     with st.form("form_ligne_charge"):
         date_charge = st.date_input(
-    "Date",
-    value=datetime.today(),
-    min_value=datetime.today()  # Empêche de choisir une date passée
-)
+            "Date",
+            value=datetime.today(),
+            min_value=datetime.today()  # Empêche de choisir une date passée
+        )
         type_charge = st.selectbox("Type de charge *", types_dispo)
         description = st.text_input("Description *")
         montant = st.number_input("Montant (DA) *", min_value=0, step=100)
