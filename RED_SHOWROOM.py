@@ -312,7 +312,7 @@ elif tab_choice == "🧾 Charges quotidiennes":
 
     # Charger les types
     types_dispo = load_types_charges()
-    st.write("Types disponibles:", types_dispo)  # Affichage pour debug
+   # st.write("Types disponibles:", types_dispo)  # Affichage pour debug
 
     # -----------------------------
     # Formulaire ligne de charge
