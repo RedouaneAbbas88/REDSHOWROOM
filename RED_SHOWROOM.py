@@ -282,10 +282,41 @@ elif tab_choice == "💳 Paiements partiels":
     else:
         st.write("Aucune vente enregistrée.")
 # -----------------------------
-# Onglet 6 : Charges quotidiennes (multi-lignes + PDF + Total cumulé)
+# Onglet 6 : Charges quotidiennes (multi-lignes + PDF + TOTAL GLOBAL)
 # -----------------------------
 elif tab_choice == "🧾 Charges quotidiennes":
     st.header("Note de charges quotidiennes")
+
+    # -----------------------------
+    # TOTAL GLOBAL DEPUIS GOOGLE SHEETS
+    # -----------------------------
+    def calcul_total_charges():
+        try:
+            sheet = spreadsheet.worksheet("Charges")
+            data = sheet.get_all_records()
+
+            total = 0
+            for row in data:
+                try:
+                    valeur = str(row["Montant (DA)"]) \
+                        .replace(" ", "") \
+                        .replace(",", ".") \
+                        .replace("DA", "") \
+                        .strip()
+
+                    if valeur:
+                        total += float(valeur)
+                except:
+                    pass
+
+            return total
+        except:
+            return 0
+
+    total_global = calcul_total_charges()
+    st.metric("💰 Total cumulé de toutes les charges", f"{total_global:,.2f} DA")
+
+    st.divider()
 
     # -----------------------------
     # Initialisation du panier
@@ -293,58 +324,30 @@ elif tab_choice == "🧾 Charges quotidiennes":
     if "charges_panier" not in st.session_state:
         st.session_state.charges_panier = []
 
-    # -----------------------------
     # Référence automatique
-    # -----------------------------
     ref_charge = f"CHG-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     st.info(f"📌 Référence du document : {ref_charge}")
 
     # -----------------------------
-    # Fonction : Charger types depuis Google Sheets
+    # Charger les types de charges
     # -----------------------------
     def load_types_charges():
-        sheet = spreadsheet.worksheet("Types_Charges")
-        header = sheet.row_values(1)
         try:
+            sheet = spreadsheet.worksheet("Types_Charges")
+            header = sheet.row_values(1)
+
             col_index = header.index("Type de charge") + 1
-        except ValueError:
-            st.error("Colonne 'Type de charge' introuvable")
+            values = sheet.col_values(col_index)[1:]
+
+            types = [v for v in values if v.strip()]
+            return types if types else ["Autre"]
+        except:
             return ["Autre"]
 
-        values = sheet.col_values(col_index)[1:]
-        types = [v for v in values if v.strip()]
-        return types if types else ["Autre"]
-
-    # -----------------------------
-    # Fonction : Total cumulé depuis Google Sheets
-    # -----------------------------
-    def calcul_total_charges():
-        sheet = spreadsheet.worksheet("Charges")
-        data = sheet.get_all_records()
-
-        total = 0
-        for row in data:
-            try:
-                valeur = str(row["Montant (DA)"]).replace(" ", "").replace(",", ".")
-                total += float(valeur)
-            except:
-                pass
-
-        return total
-
-    # -----------------------------
-    # Affichage total cumulé
-    # -----------------------------
-    total_global = calcul_total_charges()
-    st.metric("💰 Total cumulé de toutes les charges", f"{total_global:,.2f} DA")
-
-    # -----------------------------
-    # Charger types
-    # -----------------------------
     types_dispo = load_types_charges()
 
     # -----------------------------
-    # Formulaire ligne charge
+    # Formulaire de saisie
     # -----------------------------
     with st.form("form_ligne_charge"):
         date_charge = st.date_input(
@@ -352,16 +355,15 @@ elif tab_choice == "🧾 Charges quotidiennes":
             value=datetime.today(),
             min_value=datetime.today()
         )
-
         type_charge = st.selectbox("Type de charge *", types_dispo)
         description = st.text_input("Description *")
         fournisseur = st.text_input("Fournisseur / Prestataire")
-        montant = st.number_input("Montant (DA) *", min_value=0.0, step=100.0)
+        montant = st.number_input("Montant (DA) *", min_value=0, step=100)
 
         add_line = st.form_submit_button("➕ Ajouter la ligne")
 
     # -----------------------------
-    # Ajouter au panier
+    # Ajout au panier
     # -----------------------------
     if add_line:
         if not description.strip() or montant <= 0:
@@ -373,7 +375,7 @@ elif tab_choice == "🧾 Charges quotidiennes":
                 "Type de charge": type_charge,
                 "Description": description,
                 "Fournisseur / Prestataire": fournisseur,
-                "Montant (DA)": float(montant)
+                "Montant (DA)": montant
             })
             st.success("Ligne ajoutée.")
 
@@ -382,13 +384,11 @@ elif tab_choice == "🧾 Charges quotidiennes":
     # -----------------------------
     if st.session_state.charges_panier:
         st.subheader("Lignes en cours")
-
         df_charges = pd.DataFrame(st.session_state.charges_panier)
         st.dataframe(df_charges, use_container_width=True, hide_index=True)
 
-        # Total du panier
-        total_panier = df_charges["Montant (DA)"].sum()
-        st.markdown(f"### 💰 Total du document : {total_panier:,.2f} DA")
+        total_session = df_charges["Montant (DA)"].sum()
+        st.markdown(f"### 💰 Total de cette note : {total_session} DA")
 
         # -----------------------------
         # Validation finale
@@ -412,34 +412,29 @@ elif tab_choice == "🧾 Charges quotidiennes":
             # -----------------------------
             pdf = FPDF()
             pdf.add_page()
-
             pdf.set_font("Arial", 'B', 16)
             pdf.cell(200, 10, "NOTE DE CHARGES", ln=True, align="C")
-
             pdf.set_font("Arial", size=12)
             pdf.cell(200, 10, f"Référence : {ref_charge}", ln=True)
             pdf.cell(200, 10, f"Date : {datetime.now().strftime('%d/%m/%Y')}", ln=True)
             pdf.ln(5)
 
-            # En-têtes tableau
-            pdf.set_font("Arial", 'B', 11)
+            pdf.set_font("Arial", 'B', 12)
             pdf.cell(50, 10, "Type", 1)
             pdf.cell(70, 10, "Description", 1)
             pdf.cell(40, 10, "Fournisseur", 1)
-            pdf.cell(30, 10, "Montant", 1, ln=True)
+            pdf.cell(30, 10, "Montant (DA)", 1, ln=True)
 
-            # Lignes
-            pdf.set_font("Arial", size=11)
+            pdf.set_font("Arial", size=12)
             for line in st.session_state.charges_panier:
                 pdf.cell(50, 10, line["Type de charge"], 1)
                 pdf.cell(70, 10, line["Description"], 1)
                 pdf.cell(40, 10, line["Fournisseur / Prestataire"], 1)
-                pdf.cell(30, 10, f"{line['Montant (DA)']:,.2f}", 1, ln=True)
+                pdf.cell(30, 10, str(line["Montant (DA)"]), 1, ln=True)
 
-            # Total
-            pdf.set_font("Arial", 'B', 11)
+            pdf.set_font("Arial", 'B', 12)
             pdf.cell(160, 10, "TOTAL", 1)
-            pdf.cell(30, 10, f"{total_panier:,.2f}", 1, ln=True)
+            pdf.cell(30, 10, str(total_session), 1, ln=True)
 
             pdf_bytes = pdf.output(dest='S').encode('latin1')
             pdf_io = io.BytesIO(pdf_bytes)
