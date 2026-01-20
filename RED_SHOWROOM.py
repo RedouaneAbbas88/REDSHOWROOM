@@ -287,7 +287,24 @@ elif tab_choice == "💳 Paiements partiels":
 elif tab_choice == "🧾 Charges quotidiennes":
     st.header("Note de charges quotidiennes")
 
+    # -----------------------------
+    # Montant cumulé de toutes les charges enregistrées
+    # -----------------------------
+    def get_total_charges():
+        try:
+            sheet = spreadsheet.worksheet("Charges")
+            values = sheet.col_values(5)[1:]  # Supposons que Montant (DA) est la 5ème colonne
+            montants = [float(v) for v in values if v.strip()]
+            return sum(montants)
+        except Exception:
+            return 0
+
+    total_cumule = get_total_charges()
+    st.markdown(f"### 📊 Montant cumulé de toutes les charges enregistrées : {total_cumule:,.0f} DA")
+
+    # -----------------------------
     # Initialisation du panier charges
+    # -----------------------------
     if "charges_panier" not in st.session_state:
         st.session_state.charges_panier = []
 
@@ -299,20 +316,25 @@ elif tab_choice == "🧾 Charges quotidiennes":
     # Fonction pour charger les types depuis Google Sheets
     # -----------------------------
     def load_types_charges():
-        sheet = spreadsheet.worksheet("Types_Charges")  # Feuille source
-        header = sheet.row_values(1)  # Ligne d'en-tête
+        try:
+            sheet = spreadsheet.worksheet("Types_Charges")  # Feuille source
+        except gspread.exceptions.WorksheetNotFound:
+            st.error("La feuille 'Types_Charges' est introuvable !")
+            return ["Autre"]
+
+        header = sheet.row_values(1)
         try:
             col_index = header.index("Type de charge") + 1  # +1 car Google Sheets commence à 1
         except ValueError:
-            st.error("La colonne 'Type de charge' est introuvable dans la feuille types_charges.")
+            st.error("La colonne 'Type de charge' est introuvable dans la feuille Types_Charges.")
             return ["Autre"]
+
         values = sheet.col_values(col_index)[1:]  # Ignorer l'en-tête
         types = [v for v in values if v.strip()]
         return types if types else ["Autre"]
 
     # Charger les types
     types_dispo = load_types_charges()
-   # st.write("Types disponibles:", types_dispo)  # Affichage pour debug
 
     # -----------------------------
     # Formulaire ligne de charge
@@ -325,7 +347,7 @@ elif tab_choice == "🧾 Charges quotidiennes":
         )
         type_charge = st.selectbox("Type de charge *", types_dispo)
         description = st.text_input("Description *")
-        fournisseur = st.text_input("Fournisseur / Prestataire")  # <- Nouveau champ
+        fournisseur = st.text_input("Fournisseur / Prestataire")  # Nouveau champ
         montant = st.number_input("Montant (DA) *", min_value=0, step=100)
 
         add_line = st.form_submit_button("➕ Ajouter la ligne")
@@ -339,7 +361,7 @@ elif tab_choice == "🧾 Charges quotidiennes":
                 "Date": str(date_charge),
                 "Type de charge": type_charge,
                 "Description": description,
-                "Fournisseur / Prestataire": fournisseur,  # <- Nouveau champ
+                "Fournisseur / Prestataire": fournisseur,
                 "Montant (DA)": montant
             })
             st.success("Ligne ajoutée.")
@@ -353,9 +375,11 @@ elif tab_choice == "🧾 Charges quotidiennes":
         st.dataframe(df_charges, use_container_width=True, hide_index=True)
 
         total_charges = df_charges["Montant (DA)"].sum()
-        st.markdown(f"### 💰 Total : {total_charges} DA")
+        st.markdown(f"### 💰 Total de ce lot : {total_charges} DA")
 
-        # Validation finale
+        # -----------------------------
+        # Validation finale et enregistrement
+        # -----------------------------
         if st.button("✅ Valider et enregistrer les charges"):
             for line in st.session_state.charges_panier:
                 row = [
@@ -363,6 +387,7 @@ elif tab_choice == "🧾 Charges quotidiennes":
                     line["Date"],
                     line["Type de charge"],
                     line["Description"],
+                    line["Fournisseur / Prestataire"],  # Nouveau champ
                     line["Montant (DA)"]
                 ]
                 spreadsheet.worksheet("Charges").append_row(row)
@@ -379,20 +404,21 @@ elif tab_choice == "🧾 Charges quotidiennes":
             pdf.cell(200, 10, f"Date : {datetime.now().strftime('%d/%m/%Y')}", ln=True)
             pdf.ln(5)
 
+            # En-tête PDF
             pdf.set_font("Arial", 'B', 12)
+            pdf.cell(50, 10, "Fournisseur", 1)
             pdf.cell(70, 10, "Type", 1)
-            pdf.cell(80, 10, "Description", 1)
-            pdf.cell(40, 10, "Montant (DA)", 1, ln=True)
+            pdf.cell(60, 10, "Montant (DA)", 1, ln=True)
 
             pdf.set_font("Arial", size=12)
             for line in st.session_state.charges_panier:
+                pdf.cell(50, 10, line["Fournisseur / Prestataire"], 1)
                 pdf.cell(70, 10, line["Type de charge"], 1)
-                pdf.cell(80, 10, line["Description"], 1)
-                pdf.cell(40, 10, str(line["Montant (DA)"]), 1, ln=True)
+                pdf.cell(60, 10, str(line["Montant (DA)"]), 1, ln=True)
 
             pdf.set_font("Arial", 'B', 12)
-            pdf.cell(150, 10, "TOTAL", 1)
-            pdf.cell(40, 10, str(total_charges), 1, ln=True)
+            pdf.cell(120, 10, "TOTAL", 1)
+            pdf.cell(60, 10, str(total_charges), 1, ln=True)
 
             pdf_bytes = pdf.output(dest='S').encode('latin1')
             pdf_io = io.BytesIO(pdf_bytes)
