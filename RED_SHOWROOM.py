@@ -48,7 +48,7 @@ produits_dispo = df_produits['Produit'].dropna().tolist() if not df_produits.emp
 # -----------------------------
 # 🔹 Gestion des onglets
 # -----------------------------
-tabs_labels = ["🛒 Ajouter Stock", "💰 Enregistrer Vente", "📦 État Stock", "📄 Historique Ventes", "💳 Paiements partiels"]
+tabs_labels = ["🛒 Ajouter Stock", "💰 Enregistrer Vente", "📦 État Stock", "📄 Historique Ventes", "💳 Paiements partiels", "🧾 Charges quotidiennes"]
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = 0
 if "panier" not in st.session_state:
@@ -281,3 +281,107 @@ elif tab_choice == "💳 Paiements partiels":
             st.write("Aucun paiement partiel en attente.")
     else:
         st.write("Aucune vente enregistrée.")
+# -----------------------------
+# Onglet 6 : Charges quotidiennes (multi-lignes + PDF)
+# -----------------------------
+elif tab_choice == "🧾 Charges quotidiennes":
+    st.header("Note de charges quotidiennes")
+
+    # Initialisation du panier charges
+    if "charges_panier" not in st.session_state:
+        st.session_state.charges_panier = []
+
+    # Référence automatique
+    ref_charge = f"CHG-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+    st.info(f"📌 Référence du document : {ref_charge}")
+
+    # Charger les types depuis Google Sheets
+    try:
+        types_dispo = load_types_charges()
+    except:
+        types_dispo = ["Autre"]
+
+    # Formulaire ligne de charge
+    with st.form("form_ligne_charge"):
+        date_charge = st.date_input("Date", value=datetime.today())
+        type_charge = st.selectbox("Type de charge *", types_dispo)
+        description = st.text_input("Description *")
+        montant = st.number_input("Montant (DA) *", min_value=0, step=100)
+
+        add_line = st.form_submit_button("➕ Ajouter la ligne")
+
+    if add_line:
+        if not description.strip() or montant <= 0:
+            st.error("⚠️ Description et montant obligatoires.")
+        else:
+            st.session_state.charges_panier.append({
+                "Référence": ref_charge,
+                "Date": str(date_charge),
+                "Type de charge": type_charge,
+                "Description": description,
+                "Montant (DA)": montant
+            })
+            st.success("Ligne ajoutée.")
+
+    # -----------------------------
+    # Affichage panier charges
+    # -----------------------------
+    if st.session_state.charges_panier:
+        st.subheader("Lignes en cours")
+        df_charges = pd.DataFrame(st.session_state.charges_panier)
+        st.dataframe(df_charges, use_container_width=True, hide_index=True)
+
+        total_charges = df_charges["Montant (DA)"].sum()
+        st.markdown(f"### 💰 Total : {total_charges} DA")
+
+        # Validation finale
+        if st.button("✅ Valider et enregistrer les charges"):
+            for line in st.session_state.charges_panier:
+                row = [
+                    line["Référence"],
+                    line["Date"],
+                    line["Type de charge"],
+                    line["Description"],
+                    line["Montant (DA)"]
+                ]
+                spreadsheet.worksheet("Charges").append_row(row)
+
+            # -----------------------------
+            # Génération PDF
+            # -----------------------------
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", 'B', 16)
+            pdf.cell(200, 10, "NOTE DE CHARGES", ln=True, align="C")
+            pdf.set_font("Arial", size=12)
+            pdf.cell(200, 10, f"Référence : {ref_charge}", ln=True)
+            pdf.cell(200, 10, f"Date : {datetime.now().strftime('%d/%m/%Y')}", ln=True)
+            pdf.ln(5)
+
+            pdf.set_font("Arial", 'B', 12)
+            pdf.cell(70, 10, "Type", 1)
+            pdf.cell(80, 10, "Description", 1)
+            pdf.cell(40, 10, "Montant (DA)", 1, ln=True)
+
+            pdf.set_font("Arial", size=12)
+            for line in st.session_state.charges_panier:
+                pdf.cell(70, 10, line["Type de charge"], 1)
+                pdf.cell(80, 10, line["Description"], 1)
+                pdf.cell(40, 10, str(line["Montant (DA)"]), 1, ln=True)
+
+            pdf.set_font("Arial", 'B', 12)
+            pdf.cell(150, 10, "TOTAL", 1)
+            pdf.cell(40, 10, str(total_charges), 1, ln=True)
+
+            pdf_bytes = pdf.output(dest='S').encode('latin1')
+            pdf_io = io.BytesIO(pdf_bytes)
+
+            st.download_button(
+                label="📄 Télécharger la note de charges (PDF)",
+                data=pdf_io,
+                file_name=f"note_charges_{ref_charge}.pdf",
+                mime="application/pdf"
+            )
+
+            st.success("✅ Charges enregistrées avec succès.")
+            st.session_state.charges_panier = []
