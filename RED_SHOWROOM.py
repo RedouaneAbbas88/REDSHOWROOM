@@ -181,73 +181,80 @@ elif tab_choice == "💰 Enregistrer Vente":
                 entreprise_nif = "NIF: 002316105204354"
                 entreprise_art = "ART: 002316300298344"
 
-                # -------------------------------
-                # Génération facture PDF
-                # -------------------------------
-                if generer_facture:
-                    pdf_facture = FPDF()
-                    pdf_facture.add_page()
-                    pdf_facture.set_font("Arial", 'B', 16)
-                    pdf_facture.cell(200, 10, txt=entreprise_nom, ln=True, align="C")
-                    pdf_facture.set_font("Arial", size=12)
-                    pdf_facture.cell(200, 10, txt=entreprise_adresse, ln=True, align="C")
-                    pdf_facture.ln(5)
-                    pdf_facture.set_font("Arial", 'B', 14)
-                    pdf_facture.cell(200, 10, txt="FACTURE", ln=True, align="C")
-                    pdf_facture.set_font("Arial", size=12)
-                    pdf_facture.cell(200, 10, txt=f"Numéro : {prochain_num}", ln=True)
-                    pdf_facture.cell(200, 10, txt=f"Date : {datetime.now().strftime('%d/%m/%Y')}", ln=True)
-                    pdf_facture.ln(5)
+               # -------------------------------
+# Génération facture PDF
+# -------------------------------
+if generer_facture:
+    pdf_facture = FPDF()
+    pdf_facture.add_page()
+    pdf_facture.set_font("Arial", 'B', 16)
+    pdf_facture.cell(200, 10, txt=entreprise_nom, ln=True, align="C")
+    pdf_facture.set_font("Arial", size=12)
+    pdf_facture.cell(200, 10, txt=entreprise_adresse, ln=True, align="C")
+    pdf_facture.ln(5)
+    pdf_facture.set_font("Arial", 'B', 14)
+    pdf_facture.cell(200, 10, txt="FACTURE", ln=True, align="C")
+    pdf_facture.set_font("Arial", size=12)
+    pdf_facture.cell(200, 10, txt=f"Numéro : {prochain_num}", ln=True)
+    pdf_facture.cell(200, 10, txt=f"Date : {datetime.now().strftime('%d/%m/%Y')}", ln=True)
+    pdf_facture.ln(5)
 
-                    # Client divers
-                    pdf_facture.cell(200, 10, txt=f"Client : CLIENTS DIVERS", ln=True)
-                    pdf_facture.ln(5)
+    # Client divers
+    pdf_facture.cell(200, 10, txt=f"Client : CLIENTS DIVERS", ln=True)
+    pdf_facture.ln(5)
 
-                    # Table produits
-                    pdf_facture.set_font("Arial", 'B', 12)
-                    pdf_facture.cell(80, 10, "Produit", 1)
-                    pdf_facture.cell(30, 10, "Qté", 1)
-                    pdf_facture.cell(30, 10, "Prix Unitaire", 1)
-                    pdf_facture.cell(30, 10, "Total HT", 1, ln=True)
-                    pdf_facture.set_font("Arial", size=12)
+    # Table produits
+    pdf_facture.set_font("Arial", 'B', 12)
+    pdf_facture.cell(80, 10, "Produit", 1)
+    pdf_facture.cell(30, 10, "Qté", 1)
+    pdf_facture.cell(30, 10, "Prix Unitaire", 1)
+    pdf_facture.cell(30, 10, "Total HT", 1, ln=True)
+    pdf_facture.set_font("Arial", size=12)
 
-                    total_ht_global = 0
-                    for item in st.session_state.panier:
-                        total_ht_global += item["Total HT"]
-                        pdf_facture.cell(80, 10, item["Produit"], 1)
-                        pdf_facture.cell(30, 10, str(item["Quantité"]), 1)
-                        pdf_facture.cell(30, 10, f"{item['Prix unitaire']:.2f}", 1)
-                        pdf_facture.cell(30, 10, f"{item['Total HT']:.2f}", 1, ln=True)
+    total_ht_global = 0
+    for item in st.session_state.panier:
+        total_ht_global += item["Total HT"]
+        pdf_facture.cell(80, 10, item["Produit"], 1)
+        pdf_facture.cell(30, 10, str(item["Quantité"]), 1)
+        pdf_facture.cell(30, 10, f"{item['Prix unitaire']:.2f}", 1)
+        pdf_facture.cell(30, 10, f"{item['Total HT']:.2f}", 1, ln=True)
 
-                    # Calcul du timbre
-                    timbre = 0
-                    if total_ht_global <= 100000:
-                        timbre = total_ht_global * 0.01
-                    else:
-                        timbre = total_ht_global * 0.02
+    # Calcul TVA
+    tva = total_ht_global * 0.19
 
-                    tva = total_ht_global * 0.19
-                    total_ttc_facture = total_ht_global + timbre + tva
+    # Calcul Timbre sur (HT + TVA)
+    base_timbre = total_ht_global + tva
+    if base_timbre <= 30000:
+        timbre = round(base_timbre * 0.01)
+    elif base_timbre <= 100000:
+        timbre = round(base_timbre * 0.015)
+    else:
+        timbre = round(base_timbre * 0.02)
 
-                    pdf_facture.ln(5)
-                    pdf_facture.set_font("Arial", 'B', 12)
-                    pdf_facture.cell(100, 10, "Total HT", 1)
-                    pdf_facture.cell(30, 10, f"{total_ht_global:.2f}", 1, ln=True)
-                    pdf_facture.cell(100, 10, "Timbre", 1)
-                    pdf_facture.cell(30, 10, f"{timbre:.2f}", 1, ln=True)
-                    pdf_facture.cell(100, 10, "TVA 19%", 1)
-                    pdf_facture.cell(30, 10, f"{tva:.2f}", 1, ln=True)
-                    pdf_facture.cell(100, 10, "TOTAL TTC", 1)
-                    pdf_facture.cell(30, 10, f"{total_ttc_facture:.2f}", 1, ln=True)
+    # Total TTC = HT + TVA + Timbre
+    total_ttc_facture = total_ht_global + tva + timbre
 
-                    pdf_bytes = pdf_facture.output(dest='S').encode('latin1')
-                    pdf_io = io.BytesIO(pdf_bytes)
-                    st.download_button(
-                        label="📄 Télécharger la facture PDF",
-                        data=pdf_io,
-                        file_name=f"facture_{prochain_num}.pdf",
-                        mime="application/pdf"
-                    )
+    # Affichage tableau facture
+    pdf_facture.ln(5)
+    pdf_facture.set_font("Arial", 'B', 12)
+    pdf_facture.cell(100, 10, "Total HT", 1)
+    pdf_facture.cell(30, 10, f"{total_ht_global:.2f}", 1, ln=True)
+    pdf_facture.cell(100, 10, "TVA 19%", 1)
+    pdf_facture.cell(30, 10, f"{tva:.2f}", 1, ln=True)
+    pdf_facture.cell(100, 10, "Timbre", 1)
+    pdf_facture.cell(30, 10, f"{timbre}", 1, ln=True)
+    pdf_facture.cell(100, 10, "TOTAL TTC", 1)
+    pdf_facture.cell(30, 10, f"{total_ttc_facture:.2f}", 1, ln=True)
+
+    pdf_bytes = pdf_facture.output(dest='S').encode('latin1')
+    pdf_io = io.BytesIO(pdf_bytes)
+    st.download_button(
+        label="📄 Télécharger la facture PDF",
+        data=pdf_io,
+        file_name=f"facture_{prochain_num}.pdf",
+        mime="application/pdf"
+    )
+
 
                 # -------------------------------
                 # Enregistrement dans Google Sheets
