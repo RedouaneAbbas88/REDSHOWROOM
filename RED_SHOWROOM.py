@@ -71,6 +71,17 @@ if tab_choice == "🛒 Ajouter Stock":
             spreadsheet.worksheet("Stock").append_row(row)
             st.success(f"{quantite_stock} {produit_stock} ajouté(s) au stock.")
 
+# -----------------------------
+# 🔹 Conversion montant en lettres
+# -----------------------------
+def montant_en_lettres(number):
+    """Convertit un nombre en lettres (en français)."""
+    from num2words import num2words
+    try:
+        return num2words(number, lang='fr').capitalize() + " DA"
+    except:
+        return ""
+
 # =============================
 # Onglet 2 : Enregistrer Vente
 # =============================
@@ -238,6 +249,9 @@ elif tab_choice == "💰 Enregistrer Vente":
                     pdf_facture.cell(30, 10, f"{timbre}", 1, ln=True)
                     pdf_facture.cell(100, 10, "TOTAL TTC", 1)
                     pdf_facture.cell(30, 10, f"{total_ttc_facture:.2f}", 1, ln=True)
+          # Après avoir calculé total_ttc_facture
+                    pdf_facture.ln(5)
+                    pdf_facture.cell(200, 10, txt=f"Montant en lettres : {montant_en_lettres(total_ttc_facture)}", ln=True)
 
                     pdf_bytes = pdf_facture.output(dest='S').encode('latin1')
                     pdf_io = io.BytesIO(pdf_bytes)
@@ -247,7 +261,12 @@ elif tab_choice == "💰 Enregistrer Vente":
                         file_name=f"facture_{prochain_num}.pdf",
                         mime="application/pdf"
                     )
+                    total_ttc = int(round(total_ht * 1.19, 0))
+                    st.write(f"Prix unitaire : {prix_unitaire} DA | 💰 Total TTC : {total_ttc} DA")
 
+                    # Montant en lettres
+                    total_ttc_lettres = montant_en_lettres(total_ttc)
+                    st.write(f"Montant en lettres : {total_ttc_lettres}")
                 # Enregistrement Google Sheets
                 for item in st.session_state.panier:
                     row_vente = [
