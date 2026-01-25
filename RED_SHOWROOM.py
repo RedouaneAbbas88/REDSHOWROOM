@@ -181,7 +181,7 @@ elif tab_choice == "💰 Enregistrer Vente":
                         dernier_num = numeros_valides.max() if not numeros_valides.empty else 0
                     else:
                         dernier_num = 0
-                    prochain_num = f"{dernier_num+1:03d}/2025"
+                    prochain_num = f"{dernier_num+1:03d}/2026"
 
                 # Données entreprise
                 entreprise_nom = "NORTH AFRICA ELECTRONICS"
