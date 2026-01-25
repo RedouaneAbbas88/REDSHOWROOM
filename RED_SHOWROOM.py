@@ -89,10 +89,11 @@ elif tab_choice == "💰 Enregistrer Vente":
     timbre = 100  # Timbre fixe
     tva = round(total_ht * 0.19, 2)
     total_ttc = round(total_ht + timbre + tva, 2)
-    st.write(f"Prix unitaire : {prix_unitaire} DA | 💰 Total HT : {total_ht} DA | TVA : {tva} DA")
+
+    st.write(f"Prix unitaire : {prix_unitaire} DA | Total HT : {total_ht} DA | TVA : {tva} DA | TTC : {total_ttc} DA")
 
     # Infos client
-    client_nom = st.text_input("Nom du client *", value="Divers")
+    client_nom = st.text_input("Nom du client *")
     client_email = st.text_input("Email du client")
     client_tel = st.text_input("Téléphone du client *")
 
@@ -110,9 +111,6 @@ elif tab_choice == "💰 Enregistrer Vente":
     generer_facture = st.button("Générer la facture")
 
     if generer_facture:
-        # -------------------------------
-        # Enregistrer la vente
-        # -------------------------------
         df_stock = load_sheet("Stock")
         df_ventes = load_sheet("Ventes")
         vente_valide = True
@@ -140,6 +138,7 @@ elif tab_choice == "💰 Enregistrer Vente":
             entreprise_adresse = "123 Rue Principale, Alger"
             entreprise_rc = "RC: 16/00-1052043 B23"
 
+            # Enregistrement dans la feuille Ventes
             row_vente = [
                 str(datetime.now()), client_nom, client_email, client_tel,
                 produit_vente, quantite_vente, prix_unitaire, total_ht,
@@ -161,7 +160,8 @@ elif tab_choice == "💰 Enregistrer Vente":
             pdf.cell(200, 10, txt=f"Date : {datetime.now().strftime('%d/%m/%Y')}", ln=True)
             pdf.cell(200, 10, txt=f"Facture N° : {prochain_num}", ln=True)
             pdf.ln(5)
-            pdf.cell(200, 10, txt=f"Client : {client_nom}", ln=True)
+            # Facture affichera client Divers
+            pdf.cell(200, 10, txt=f"Client : Divers", ln=True)
             pdf.cell(200, 10, txt=f"Téléphone : {client_tel}", ln=True)
             pdf.ln(5)
 
