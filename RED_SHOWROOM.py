@@ -121,9 +121,7 @@ elif tab_choice == "💰 Enregistrer Vente":
             })
             st.success(f"{quantite_vente} x {produit_vente} ajouté(s) au panier.")
 
-    # -------------------------------
-    # Affichage du panier
-    # -------------------------------
+    # Affichage panier et modification
     if st.session_state.panier:
         st.subheader("Panier actuel")
         df_panier = pd.DataFrame(st.session_state.panier)
@@ -146,9 +144,7 @@ elif tab_choice == "💰 Enregistrer Vente":
         for index in sorted(indices_a_supprimer, reverse=True):
             st.session_state.panier.pop(index)
 
-        # -------------------------------
-        # Enregistrer la vente et PDF
-        # -------------------------------
+        # Enregistrer vente et générer PDF
         if st.button("Enregistrer la vente"):
             df_stock = load_sheet("Stock")
             df_ventes = load_sheet("Ventes")
@@ -163,6 +159,7 @@ elif tab_choice == "💰 Enregistrer Vente":
                     vente_valide = False
 
             if vente_valide:
+                # Numéro de facture
                 prochain_num = ""
                 if generer_facture:
                     factures_existantes = df_ventes[df_ventes["Numéro de facture"].notnull()] if not df_ventes.empty else pd.DataFrame()
@@ -181,84 +178,77 @@ elif tab_choice == "💰 Enregistrer Vente":
                 entreprise_nif = "NIF: 002316105204354"
                 entreprise_art = "ART: 002316300298344"
 
-               # -------------------------------
-# Génération facture PDF
-# -------------------------------
-if generer_facture:
-    pdf_facture = FPDF()
-    pdf_facture.add_page()
-    pdf_facture.set_font("Arial", 'B', 16)
-    pdf_facture.cell(200, 10, txt=entreprise_nom, ln=True, align="C")
-    pdf_facture.set_font("Arial", size=12)
-    pdf_facture.cell(200, 10, txt=entreprise_adresse, ln=True, align="C")
-    pdf_facture.ln(5)
-    pdf_facture.set_font("Arial", 'B', 14)
-    pdf_facture.cell(200, 10, txt="FACTURE", ln=True, align="C")
-    pdf_facture.set_font("Arial", size=12)
-    pdf_facture.cell(200, 10, txt=f"Numéro : {prochain_num}", ln=True)
-    pdf_facture.cell(200, 10, txt=f"Date : {datetime.now().strftime('%d/%m/%Y')}", ln=True)
-    pdf_facture.ln(5)
+                # Génération facture PDF
+                if generer_facture:
+                    pdf_facture = FPDF()
+                    pdf_facture.add_page()
+                    pdf_facture.set_font("Arial", 'B', 16)
+                    pdf_facture.cell(200, 10, txt=entreprise_nom, ln=True, align="C")
+                    pdf_facture.set_font("Arial", size=12)
+                    pdf_facture.cell(200, 10, txt=entreprise_adresse, ln=True, align="C")
+                    pdf_facture.ln(5)
+                    pdf_facture.set_font("Arial", 'B', 14)
+                    pdf_facture.cell(200, 10, txt="FACTURE", ln=True, align="C")
+                    pdf_facture.set_font("Arial", size=12)
+                    pdf_facture.cell(200, 10, txt=f"Numéro : {prochain_num}", ln=True)
+                    pdf_facture.cell(200, 10, txt=f"Date : {datetime.now().strftime('%d/%m/%Y')}", ln=True)
+                    pdf_facture.ln(5)
+                    pdf_facture.cell(200, 10, txt=f"Client : CLIENTS DIVERS", ln=True)
+                    pdf_facture.ln(5)
 
-    # Client divers
-    pdf_facture.cell(200, 10, txt=f"Client : CLIENTS DIVERS", ln=True)
-    pdf_facture.ln(5)
+                    # Table produits
+                    pdf_facture.set_font("Arial", 'B', 12)
+                    pdf_facture.cell(80, 10, "Produit", 1)
+                    pdf_facture.cell(30, 10, "Qté", 1)
+                    pdf_facture.cell(30, 10, "Prix Unitaire", 1)
+                    pdf_facture.cell(30, 10, "Total HT", 1, ln=True)
+                    pdf_facture.set_font("Arial", size=12)
 
-    # Table produits
-    pdf_facture.set_font("Arial", 'B', 12)
-    pdf_facture.cell(80, 10, "Produit", 1)
-    pdf_facture.cell(30, 10, "Qté", 1)
-    pdf_facture.cell(30, 10, "Prix Unitaire", 1)
-    pdf_facture.cell(30, 10, "Total HT", 1, ln=True)
-    pdf_facture.set_font("Arial", size=12)
+                    total_ht_global = 0
+                    for item in st.session_state.panier:
+                        total_ht_global += item["Total HT"]
+                        pdf_facture.cell(80, 10, item["Produit"], 1)
+                        pdf_facture.cell(30, 10, str(item["Quantité"]), 1)
+                        pdf_facture.cell(30, 10, f"{item['Prix unitaire']:.2f}", 1)
+                        pdf_facture.cell(30, 10, f"{item['Total HT']:.2f}", 1, ln=True)
 
-    total_ht_global = 0
-    for item in st.session_state.panier:
-        total_ht_global += item["Total HT"]
-        pdf_facture.cell(80, 10, item["Produit"], 1)
-        pdf_facture.cell(30, 10, str(item["Quantité"]), 1)
-        pdf_facture.cell(30, 10, f"{item['Prix unitaire']:.2f}", 1)
-        pdf_facture.cell(30, 10, f"{item['Total HT']:.2f}", 1, ln=True)
+                    # Calcul TVA
+                    tva = total_ht_global * 0.19
 
-    # Calcul TVA
-    tva = total_ht_global * 0.19
+                    # Calcul Timbre
+                    base_timbre = total_ht_global + tva
+                    if base_timbre <= 30000:
+                        timbre = round(base_timbre * 0.01)
+                    elif base_timbre <= 100000:
+                        timbre = round(base_timbre * 0.015)
+                    else:
+                        timbre = round(base_timbre * 0.02)
 
-    # Calcul Timbre sur (HT + TVA)
-    base_timbre = total_ht_global + tva
-    if base_timbre <= 30000:
-        timbre = round(base_timbre * 0.01)
-    elif base_timbre <= 100000:
-        timbre = round(base_timbre * 0.015)
-    else:
-        timbre = round(base_timbre * 0.02)
+                    # Total TTC
+                    total_ttc_facture = total_ht_global + tva + timbre
 
-    # Total TTC = HT + TVA + Timbre
-    total_ttc_facture = total_ht_global + tva + timbre
+                    # Affichage tableau facture
+                    pdf_facture.ln(5)
+                    pdf_facture.set_font("Arial", 'B', 12)
+                    pdf_facture.cell(100, 10, "Total HT", 1)
+                    pdf_facture.cell(30, 10, f"{total_ht_global:.2f}", 1, ln=True)
+                    pdf_facture.cell(100, 10, "TVA 19%", 1)
+                    pdf_facture.cell(30, 10, f"{tva:.2f}", 1, ln=True)
+                    pdf_facture.cell(100, 10, "Timbre", 1)
+                    pdf_facture.cell(30, 10, f"{timbre}", 1, ln=True)
+                    pdf_facture.cell(100, 10, "TOTAL TTC", 1)
+                    pdf_facture.cell(30, 10, f"{total_ttc_facture:.2f}", 1, ln=True)
 
-    # Affichage tableau facture
-    pdf_facture.ln(5)
-    pdf_facture.set_font("Arial", 'B', 12)
-    pdf_facture.cell(100, 10, "Total HT", 1)
-    pdf_facture.cell(30, 10, f"{total_ht_global:.2f}", 1, ln=True)
-    pdf_facture.cell(100, 10, "TVA 19%", 1)
-    pdf_facture.cell(30, 10, f"{tva:.2f}", 1, ln=True)
-    pdf_facture.cell(100, 10, "Timbre", 1)
-    pdf_facture.cell(30, 10, f"{timbre}", 1, ln=True)
-    pdf_facture.cell(100, 10, "TOTAL TTC", 1)
-    pdf_facture.cell(30, 10, f"{total_ttc_facture:.2f}", 1, ln=True)
+                    pdf_bytes = pdf_facture.output(dest='S').encode('latin1')
+                    pdf_io = io.BytesIO(pdf_bytes)
+                    st.download_button(
+                        label="📄 Télécharger la facture PDF",
+                        data=pdf_io,
+                        file_name=f"facture_{prochain_num}.pdf",
+                        mime="application/pdf"
+                    )
 
-    pdf_bytes = pdf_facture.output(dest='S').encode('latin1')
-    pdf_io = io.BytesIO(pdf_bytes)
-    st.download_button(
-        label="📄 Télécharger la facture PDF",
-        data=pdf_io,
-        file_name=f"facture_{prochain_num}.pdf",
-        mime="application/pdf"
-    )
-
-
-                # -------------------------------
-                # Enregistrement dans Google Sheets
-                # -------------------------------
+                # Enregistrement Google Sheets
                 for item in st.session_state.panier:
                     row_vente = [
                         str(datetime.now()), item["Client Nom"], item["Client Email"], item["Client Tel"],
@@ -313,7 +303,7 @@ elif tab_choice == "💳 Paiements partiels":
     if not df_ventes.empty:
         df_partiels = df_ventes[df_ventes["Reste à payer"] > 0]
         if not df_partiels.empty:
-            st.dataframe(df_partiels[["Produit", "Nom", "Téléphone", "Total TTC", "Montant payé", "Reste à payer"]], use_container_width=True)
+            st.dataframe(df_partiels[["Produit", "Client Nom", "Client Tel", "Total TTC", "Montant payé", "Reste à payer"]], use_container_width=True)
         else:
             st.write("Aucun paiement partiel en attente.")
     else:
@@ -326,27 +316,20 @@ elif tab_choice == "🧾 Charges quotidiennes":
     st.header("Note de charges quotidiennes")
 
     # -----------------------------
-    # TOTAL GLOBAL DEPUIS GOOGLE SHEETS
+    # Total global depuis Google Sheets
     # -----------------------------
     def calcul_total_charges():
         try:
             sheet = spreadsheet.worksheet("Charges")
             data = sheet.get_all_records()
-
             total = 0
             for row in data:
                 try:
-                    valeur = str(row["Montant"]) \
-                        .replace(" ", "") \
-                        .replace(",", ".") \
-                        .replace("DA", "") \
-                        .strip()
-
+                    valeur = str(row["Montant"]).replace(" ", "").replace(",", ".").replace("DA", "").strip()
                     if valeur:
                         total += float(valeur)
                 except:
                     pass
-
             return total
         except:
             return 0
@@ -357,26 +340,23 @@ elif tab_choice == "🧾 Charges quotidiennes":
     st.divider()
 
     # -----------------------------
-    # Initialisation du panier
+    # Initialisation panier charges
     # -----------------------------
     if "charges_panier" not in st.session_state:
         st.session_state.charges_panier = []
 
-    # Référence automatique
     ref_charge = f"CHG-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     st.info(f"📌 Référence du document : {ref_charge}")
 
     # -----------------------------
-    # Charger les types de charges
+    # Charger types charges
     # -----------------------------
     def load_types_charges():
         try:
             sheet = spreadsheet.worksheet("Types_Charges")
             header = sheet.row_values(1)
-
             col_index = header.index("Type de charge") + 1
             values = sheet.col_values(col_index)[1:]
-
             types = [v for v in values if v.strip()]
             return types if types else ["Autre"]
         except:
@@ -384,62 +364,29 @@ elif tab_choice == "🧾 Charges quotidiennes":
 
     types_dispo = load_types_charges()
 
-    # -----------------------------
-    # Formulaire de saisie
-    # -----------------------------
+    # Formulaire saisie
     with st.form("form_ligne_charge"):
-        date_charge = st.date_input(
-            "Date",
-            value=datetime.today(),
-            min_value=datetime.today()
-        )
+        date_charge = st.date_input("Date", value=datetime.today(), min_value=datetime.today())
         type_charge = st.selectbox("Type de charge *", types_dispo)
-        description = st.text_input("Description *")
-        fournisseur = st.text_input("Fournisseur / Payé à *")
-        montant = st.number_input("Montant (DA) *", min_value=0.0, step=10.0)
-
-        if st.form_submit_button("Ajouter la ligne"):
+        montant_charge = st.number_input("Montant (DA) *", min_value=0, step=1)
+        observation_charge = st.text_area("Observation")
+        if st.form_submit_button("Ajouter la charge"):
             st.session_state.charges_panier.append({
-                "Date": date_charge.strftime("%d/%m/%Y"),
+                "Réf": ref_charge,
+                "Date": str(date_charge),
                 "Type": type_charge,
-                "Description": description,
-                "Fournisseur": fournisseur,
-                "Montant": montant
+                "Montant": montant_charge,
+                "Observation": observation_charge
             })
-            st.success("Ligne ajoutée au panier")
+            st.success("Charge ajoutée au panier.")
 
-    # -----------------------------
-    # Affichage du panier
-    # -----------------------------
+    # Affichage panier charges
     if st.session_state.charges_panier:
-        st.subheader("Panier des charges")
-        df_panier_charges = pd.DataFrame(st.session_state.charges_panier)
-        st.dataframe(df_panier_charges, use_container_width=True, hide_index=True)
-
-        indices_a_supprimer = []
-        for i, item in enumerate(st.session_state.charges_panier):
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                st.write(f"{item['Date']} - {item['Type']} - {item['Description']} - {item['Fournisseur']} - {item['Montant']}")
-            with col2:
-                if st.button("❌ Supprimer", key=f"del_charge_{i}"):
-                    indices_a_supprimer.append(i)
-        for index in sorted(indices_a_supprimer, reverse=True):
-            st.session_state.charges_panier.pop(index)
-
-        # -----------------------------
-        # Enregistrement
-        # -----------------------------
-        if st.button("Enregistrer les charges"):
-            sheet_charges = spreadsheet.worksheet("Charges")
+        st.subheader("Charges à enregistrer")
+        df_charges = pd.DataFrame(st.session_state.charges_panier)
+        st.dataframe(df_charges, use_container_width=True)
+        if st.button("Enregistrer toutes les charges"):
             for item in st.session_state.charges_panier:
-                sheet_charges.append_row([
-                    ref_charge,
-                    item["Date"],
-                    item["Type"],
-                    item["Description"],
-                    item["Fournisseur"],
-                    item["Montant"]
-                ])
-            st.success(f"{len(st.session_state.charges_panier)} charge(s) enregistrée(s)")
+                spreadsheet.worksheet("Charges").append_row(list(item.values()))
+            st.success(f"{len(st.session_state.charges_panier)} charge(s) enregistrée(s).")
             st.session_state.charges_panier = []
