@@ -193,9 +193,9 @@ elif tab_choice == "💰 Enregistrer Vente":
                 # Données client divers pour PDF
                 client_divers_nom = "CLIENTS DIVERS"
                 client_divers_adresse = "BBA"
-                client_divers_nif = "002316105204354"
-                client_divers_art = "002316300298344"
-                client_divers_rc = "16/00-1052043 B23"
+                client_divers_nif = "....."
+                client_divers_art = "....."
+                client_divers_rc = "......"
 
                 # Génération PDF
                 if generer_facture:
@@ -255,7 +255,7 @@ elif tab_choice == "💰 Enregistrer Vente":
                     pdf_facture.cell(100,10,"TOTAL TTC",1)
                     pdf_facture.cell(30,10,f"{total_ttc_facture:.2f}",1,ln=True)
                     pdf_facture.ln(5)
-                    pdf_facture.cell(200,10,txt=f"Montant en lettres : {montant_en_lettres(total_ttc_facture)}",ln=True)
+                    pdf_facture.cell(200,8,txt=f"Montant en lettres : {montant_en_lettres(total_ttc_facture)}",ln=True)
 
                     pdf_bytes = pdf_facture.output(dest='S').encode('latin1')
                     pdf_io = io.BytesIO(pdf_bytes)
