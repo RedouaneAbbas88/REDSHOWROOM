@@ -100,7 +100,7 @@ elif tab_choice == "💰 Enregistrer Vente":
     montant_paye = st.number_input(
         "Montant payé par le client",
         min_value=0.0,
-        max_value=float(total_ht),
+        max_value=float(total_ttc),
         value=0.0,
         step=1.0,
         format="%.2f"
