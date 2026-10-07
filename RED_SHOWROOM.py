@@ -355,3 +355,19 @@ elif tab_choice == "🧾 Charges quotidiennes":
 
             st.session_state.charges_panier = []
             st.success("Charges enregistrées")
+
+st.set_page_config(page_title="Showroom Stock & Vente", layout="wide")
+
+st.warning("⚠️ APPLICATION DÉSACTIVÉE")
+
+st.markdown("""
+### Merci de ne plus effectuer de saisie sur cette application.
+
+Nous vous remercions désormais de **saisir toutes les nouvelles opérations sur le nouveau système**.
+
+Cette application est temporairement désactivée pour les nouvelles saisies.
+
+**Merci pour votre compréhension et votre collaboration.**
+""")
+
+st.stop()
